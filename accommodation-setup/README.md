@@ -22,7 +22,7 @@ Install the Wix `@wix/media` and `@wix/essentials` packages in the site before s
 
 ## Page templates
 
-The files in `page-templates` need to be copied into Wix page code after the pages exist in the Editor. They are not deployed by this workspace yet.
+The Editor now has pages **Book** (`pi3a5`), **Staff** (`kxsf5`), **Facility Settings** (`n3v4f`), and **Guest Identity** (`mkr5s`). Matching page-code files are included in the draft branch under `src/pages/`. The site repo's `main` branch still needs its Wix UI version synced from the Local Editor before those page-code files can be used.
 
 - `public-booking.js`: public availability and 24-hour hold flow. Create a public **Book** page and add the selectors referenced in the file, including the accommodation repeater elements.
 - `staff-dashboard.js`: staff booking creation, hold confirmation, check-in, payment, checkout, bills, ledger entries and period statement. Create a **Staff** page, restrict it to site members, and add the element IDs listed below with suitable Wix input, button, repeater and date picker components.
@@ -43,7 +43,7 @@ Identity page element IDs: `identityMessage`, `bookingId`, `loadGuests`, `identi
 
 - Provisioned on the selected Wix site: the 10 CMS collections, 9 initial resources, default settings (2 pm check-in, 12 pm checkout, ₹100 common-kitchen charge), Wix Members Area, and an `ACTIVE` unique inventory-slot index. The site readiness flag is enabled only after that index became active. Identity/settings uniqueness indexes are still building.
 - Implemented locally: Wix data schema and backend methods for public availability/holds, staff booking operations, guest check-in records, bill details, receipts, checkout, payment posting, admin-only identity access and private uploads, budget entry/reporting, administrator resource/settings updates, and public booking, staff dashboard and settings page-code templates.
-- Still needs implementation/connection: authenticate to the Git repository, put Velo modules in the actual Wix repo, create the public, staff and administrator pages in the Editor, configure Members roles, build the administrator Aadhaar management screen, then verify in Preview before any live release.
+- Still needs implementation/connection: sync the new Editor UI version with the IDE, add the controls listed below to each Wix page, configure Members roles and required Wix media packages, then verify in Preview before any live release.
 - The public hold service uses the unique inventory-lock index to avoid room/bed conflicts. Do not enable public bookings until the index reports `ACTIVE`.
 - Do not upload real Aadhaar images until the Wix site roles, collection permissions, and private-file flow have been verified on the connected site.
 
