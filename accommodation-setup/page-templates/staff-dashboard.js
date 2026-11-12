@@ -16,6 +16,8 @@ const date = value => {
 };
 let selectedBooking;
 let bootstrap;
+let selectedBill;
+let currentReport;
 
 $w.onReady(async () => {
   $('#statusMessage').text = 'Loading accommodation records…';
@@ -38,6 +40,18 @@ $w.onReady(async () => {
   $('#addLedgerEntry').onClick(onAddLedgerEntry);
   $('#saveBudget').onClick(onSaveBudget);
   $('#runStatement').onClick(onRunStatement);
+  $('#printBill').onClick(() => selectedBill && printBill(selectedBill));
+  $('#printStatement').onClick(printStatement);
+  $('#bookingRepeater').onItemReady(($item, item) => {
+    $item('#bookingTitle').text = `${item.bookingCode} · ${item.leadName}`;
+    $item('#bookingSummary').text = `${item.resourceNameSnapshot} · ${date(item.startDate)} to ${date(item.endDate)} · ${item.status}`;
+    $item('#bookingBalance').text = item.balanceDue == null ? '' : `Balance ${money(item.balanceDue)}`;
+    $item('#openBooking').onClick(() => openBooking(item._id));
+  });
+  $('#reportRepeater').onItemReady(($item, item) => {
+    $item('#reportCategory').text = `${item._id.startsWith('R-') ? 'Receipts' : 'Payments'} · ${item.category}`;
+    $item('#reportCategoryAmount').text = money(item.amount);
+  });
 });
 
 function showError(error) {
@@ -52,12 +66,6 @@ async function refreshBookings() {
     if ($('#filterStatus').value) filters.status = $('#filterStatus').value;
     const bookings = await listBookings(filters);
     $('#bookingRepeater').data = bookings.map(item => ({ ...item, _id: item._id }));
-    $('#bookingRepeater').onItemReady(($item, item) => {
-      $item('#bookingTitle').text = `${item.bookingCode} · ${item.leadName}`;
-      $item('#bookingSummary').text = `${item.resourceNameSnapshot} · ${date(item.startDate)} to ${date(item.endDate)} · ${item.status}`;
-      $item('#bookingBalance').text = item.balanceDue == null ? '' : `Balance ${money(item.balanceDue)}`;
-      $item('#openBooking').onClick(() => openBooking(item._id));
-    });
   } catch (error) { showError(error); }
 }
 
@@ -65,6 +73,7 @@ async function openBooking(id) {
   try {
     selectedBooking = id;
     const [detail, bill] = await Promise.all([getBookingDetails(id), getBillingDetails(id)]);
+    selectedBill = bill;
     const b = detail.booking;
     setText('#selectedBooking', `${b.bookingCode} · ${b.leadName}`);
     setText('#selectedSummary', `${b.resourceNameSnapshot} · ${date(b.startDate)} → ${date(b.endDate)} · ${b.status}`);
@@ -76,7 +85,6 @@ async function openBooking(id) {
     $('#checkInPanel').collapsed = !['CONFIRMED', 'CHECKED_IN'].includes(b.status);
     $('#paymentPanel').collapsed = !['CONFIRMED', 'CHECKED_IN', 'CHECKED_OUT'].includes(b.status) || bill.balanceDue <= 0;
     $('#checkOut').collapsed = !['CONFIRMED', 'CHECKED_IN'].includes(b.status);
-    $('#printBill').onClick(() => printBill(bill));
     await refreshBookings();
   } catch (error) { showError(error); }
 }
@@ -146,17 +154,28 @@ async function onAddLedgerEntry() {
 async function onRunStatement() {
   try {
     const report = await getFinancialReport(date(field('#reportStart')), date(field('#reportEnd')));
+    currentReport = report;
     setText('#reportReceipts', money(report.receipts.total));
     setText('#reportPayments', money(report.payments.total));
     setText('#reportNet', money(report.net));
     $('#reportRepeater').data = [...report.receipts.byCategory.map(row => ({ ...row, _id: `R-${row.category}` })),
       ...report.payments.byCategory.map(row => ({ ...row, _id: `P-${row.category}` }))];
-    $('#reportRepeater').onItemReady(($item, item) => {
-      $item('#reportCategory').text = `${item._id.startsWith('R-') ? 'Receipts' : 'Payments'} · ${item.category}`;
-      $item('#reportCategoryAmount').text = money(item.amount);
-    });
-    $('#printStatement').onClick(() => window.print());
   } catch (error) { showError(error); }
+}
+
+function printStatement() {
+  if (!currentReport) return showError(new Error('Run a statement first.'));
+  const rows = [...currentReport.receipts.entries.map(item => ({ ...item, label: 'Receipt' })),
+    ...currentReport.payments.entries.map(item => ({ ...item, label: 'Payment' }))]
+    .sort((a, b) => new Date(a.entryDate) - new Date(b.entryDate));
+  const entries = rows.map(item => `<div class="row"><span>${escapeHtml(item.label)} · ${escapeHtml(date(item.entryDate))} · ${escapeHtml(item.category)}<br>${escapeHtml(item.description)}</span><span>${money(item.amount)}</span></div>`).join('');
+  const budgets = currentReport.budgets.map(item => `<div class="row"><span>Budget · ${escapeHtml(item.category)} · ${escapeHtml(date(item.periodStart))} to ${escapeHtml(date(item.periodEnd))}</span><span>${money(item.amount)}</span></div>`).join('');
+  const html = `<h1>Receipts and Payments Statement</h1><p>${escapeHtml(currentReport.period.startDate)} to ${escapeHtml(currentReport.period.endDate)}</p>
+    <div class="row"><span>Total receipts</span><span>${money(currentReport.receipts.total)}</span></div>
+    <div class="row"><span>Total payments</span><span>${money(currentReport.payments.total)}</span></div>
+    <div class="row total"><span>Net receipts</span><span>${money(currentReport.net)}</span></div>
+    <h2>Transactions</h2>${entries || '<p>No ledger entries for this period.</p>'}<h2>Budgets</h2>${budgets || '<p>No overlapping budgets.</p>'}`;
+  $('#documentFrame').postMessage({ type: 'printDocument', html });
 }
 
 async function onSaveBudget() {
