@@ -22,6 +22,7 @@
         "startDate": "DATE", "endDate": "DATE", "partySize": "NUMBER", "bedCount": "NUMBER",
         "leadName": "TEXT", "phone": "TEXT", "roomRateSnapshot": "NUMBER", "kitchenRateSnapshot": "NUMBER",
         "requiredPayment": "NUMBER", "holdExpiresAt": "DATETIME", "kitchenDays": "ARRAY", "facilityUses": "ARRAY",
+        "housekeepingStatus": "TEXT", "housekeepingUpdatedAt": "DATETIME", "housekeepingUpdatedBy": "TEXT",
         "customData": "OBJECT", "patientId": "TEXT", "checkInTimeSnapshot": "TEXT", "checkOutTimeSnapshot": "TEXT",
         "createdAt": "DATETIME", "confirmedAt": "DATETIME", "checkedInAt": "DATETIME", "checkedOutAt": "DATETIME", "balanceDue": "NUMBER"
       }
