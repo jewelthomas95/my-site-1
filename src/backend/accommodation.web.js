@@ -816,6 +816,20 @@ export const generateGuestDocumentUploadUrl = webMethod(Permissions.SiteMember, 
   return { uploadUrl: result.uploadUrl };
 });
 
+export const getGuestDocumentUploadStatus = webMethod(Permissions.SiteMember, async (fileId) => {
+  await requireAdmin();
+  const id = boundedText(fileId, 'Uploaded image', 1000);
+  const getDescriptors = auth.elevate(files.getFileDescriptors);
+  const result = await getDescriptors([id]);
+  const file = (result.files || []).find(item => item._id === id);
+  if (!file) return { status: 'PROCESSING', private: false };
+  if (file.private !== true) fail('Wix did not confirm that the uploaded image is private.', 'PRIVATE_FILE_REQUIRED');
+  if (file.mediaType !== 'IMAGE') fail('Aadhaar photos must be image files.', 'INVALID_FILE');
+  if (Number(file.sizeInBytes || 0) > 10 * 1024 * 1024) fail('Aadhaar photos must be 10 MB or smaller.', 'FILE_TOO_LARGE');
+  if (file.operationStatus === 'FAILED') fail('Wix could not process this image. Please upload it again.', 'UPLOAD_FAILED');
+  return { status: file.operationStatus || 'PROCESSING', private: true };
+});
+
 export const saveGuestIdentity = webMethod(Permissions.SiteMember, async (guestId, data) => {
   const user = await requireAdmin();
   const id = boundedText(guestId, 'Guest', 100);
