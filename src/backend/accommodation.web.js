@@ -491,7 +491,8 @@ export const saveCheckIn = webMethod(Permissions.SiteMember, async (bookingId, p
   const kitchenSettings = await getSetting('commonKitchen', { rate: 100, eligibleResourceIds: [] });
   if (kitchenDays.length && !(kitchenSettings.eligibleResourceIds || []).includes(booking.resourceId)) fail('Common kitchen use is not available for this accommodation.');
   booking.kitchenDays = kitchenDays;
-  booking.kitchenRateSnapshot = Number(kitchenSettings.rate || 0);
+  // Keep the rate captured when the booking was made; later settings edits must not rewrite historic bills.
+  booking.kitchenRateSnapshot = booking.kitchenRateSnapshot ?? Number(kitchenSettings.rate || 0);
   const facilitySettings = await getSetting('chargeableFacilities', { items: [] });
   const facilityItems = (facilitySettings.items || []).filter(item => item.active !== false);
   const requestedUses = Array.isArray(payload.facilityUses) ? payload.facilityUses : [];
