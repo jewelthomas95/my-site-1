@@ -4,14 +4,14 @@ This is the Wix Editor implementation of the church accommodation app. The featu
 
 ## App interface (single Wix component)
 
-The working interface is a responsive HTML Component on the Home page, backed by the role-checked Velo web methods. This avoids adding dozens of separate Wix controls. To connect it:
+The working interface is a responsive HTML Component on the Home page, backed by role-checked Velo web methods. Staff use the visible Staff login tab to sign in; their Wix role determines which tools appear. To connect it:
 
 1. Add one **Embed Code → Embed HTML** component to Home, stretch it to the page content width, and set its ID to `havenApp`.
 2. Paste `accommodation-setup/page-templates/accommodation-shell.html` into the component's code editor.
 3. The repository's `src/pages/Home.mwzy1.js` acts as the Wix-to-app bridge. Keep the HTML component code and page-code ID in sync.
 4. In Codespaces, use the `codex/accommodation-management` branch and run `wix dev --tunnel`. Wix's Local Editor connection is now working. Use Preview to inspect changes; publishing is a separate step.
 
-Before live use, install the two Wix packages below, assign staff and administrator roles, set the dormitory rate, and verify the private Aadhaar upload and access restrictions in Preview. Public bookings require the inventory-lock unique index to remain `ACTIVE`.
+Before live use, install the two Wix packages below, create and assign staff roles, and verify private Aadhaar upload and access restrictions in Preview. The Dormitory is set to ₹100 per bed per day. Public bookings require the inventory-lock unique index to remain `ACTIVE`.
 
 ## Wix site setup
 
@@ -63,7 +63,7 @@ Identity page element IDs: `identityMessage`, `bookingId`, `loadGuests`, `identi
 
 - Provisioned on the selected Wix site: the 10 CMS collections, 9 initial resources, default settings (2 pm check-in, 12 pm checkout, ₹100 common-kitchen charge), Wix Members Area, and an `ACTIVE` unique inventory-slot index. The site readiness flag is enabled only after that index became active. Identity/settings uniqueness indexes are still building.
 - Implemented in the draft branch: Wix data schema and backend methods for public availability/holds, staff booking operations, guest check-in records, bill details, receipts, checkout, payment posting, admin-only identity access and private uploads, budget entry/reporting, administrator resource/settings updates, and public booking, staff dashboard and settings page-code templates.
-- Connected in the Wix Editor: the `havenApp` component and its shell are in place, and `wix dev --tunnel` opens the Local Editor from Codespaces. Remaining setup: install the two packages above, assign staff/admin roles, configure the dormitory rate, and verify private identity uploads and permissions in Preview before live use.
+- Connected in the Wix Editor: the `havenApp` component and its shell are in place, and `wix dev --tunnel` opens the Local Editor from Codespaces. Remaining setup: install the two packages above, create and assign the four staff roles, and verify the booking, accounts, housekeeping, and private identity flows in Preview before live use. The Dormitory rate is configured at ₹100 per bed per day.
 - The public hold service uses the unique inventory-lock index to avoid room/bed conflicts. Do not enable public bookings until the index reports `ACTIVE`.
 - Do not upload real Aadhaar images until the Wix site roles, collection permissions, and private-file flow have been verified on the connected site.
 
