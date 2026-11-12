@@ -7,6 +7,7 @@
 import {
   getPublicResources, getPublicAvailability, createPublicHold,
   getStaffBootstrap, listBookings, getBookingDetails, createStaffBooking,
+  getHousekeepingTasks, setHousekeepingStatus,
   confirmHold, getBillingDetails, getReceipt, recordPayment, saveCheckIn,
   checkOut, addCashbookEntry, getFinancialReport, saveBudget,
   saveResource, saveFacilitySettings, getGuestIdentity,
@@ -21,6 +22,8 @@ const methods = {
   listBookings,
   getBookingDetails,
   createStaffBooking,
+  getHousekeepingTasks,
+  setHousekeepingStatus,
   confirmHold,
   getBillingDetails,
   getReceipt,
