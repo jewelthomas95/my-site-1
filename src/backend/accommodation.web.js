@@ -10,6 +10,9 @@ const C = {
 };
 const STAFF_ROLES = new Set(['Accommodation Staff', 'Accommodation Administrator', 'Admin', 'Administrator', 'Accountant', 'Caretaker', 'Cleaner']);
 const ADMIN_ROLES = new Set(['Accommodation Administrator', 'Administrator', 'Admin']);
+const ACCOUNTANT_ROLES = new Set(['Accountant']);
+const CARETAKER_ROLES = new Set(['Caretaker']);
+const CLEANER_ROLES = new Set(['Cleaner']);
 const READ = { suppressAuth: true };
 const WRITE = { suppressAuth: true };
 const DAY_MS = 86_400_000;
@@ -62,7 +65,10 @@ async function viewer() {
     const roles = await currentMember.getRoles();
     const names = new Set((roles || []).map(role => role.title || role.name).filter(Boolean));
     const role = [...ADMIN_ROLES].some(name => names.has(name)) ? 'admin'
-      : [...STAFF_ROLES].some(name => names.has(name)) ? 'staff' : null;
+      : [...ACCOUNTANT_ROLES].some(name => names.has(name)) ? 'accountant'
+        : [...CARETAKER_ROLES].some(name => names.has(name)) ? 'caretaker'
+          : [...CLEANER_ROLES].some(name => names.has(name)) ? 'cleaner'
+            : [...STAFF_ROLES].some(name => names.has(name)) ? 'staff' : null;
     return { id: member._id, role };
   } catch (_) {
     return null;
@@ -78,6 +84,30 @@ async function requireStaff() {
 async function requireAdmin() {
   const user = await viewer();
   if (!user || user.role !== 'admin') fail('Administrator access is required.', 'FORBIDDEN');
+  return user;
+}
+
+async function requireOperationalStaff() {
+  const user = await requireStaff();
+  if (!['admin', 'accountant', 'caretaker', 'staff'].includes(user.role)) fail('Booking access is not available for this staff role.', 'FORBIDDEN');
+  return user;
+}
+
+async function requirePaymentStaff() {
+  const user = await requireStaff();
+  if (!['admin', 'accountant', 'caretaker', 'staff'].includes(user.role)) fail('Payment access is not available for this staff role.', 'FORBIDDEN');
+  return user;
+}
+
+async function requireFinanceStaff() {
+  const user = await requireStaff();
+  if (!['admin', 'accountant', 'staff'].includes(user.role)) fail('Accounting access is restricted to the Administrator and Accountant.', 'FORBIDDEN');
+  return user;
+}
+
+async function requireHousekeepingStaff() {
+  const user = await requireStaff();
+  if (!['admin', 'caretaker', 'cleaner', 'staff'].includes(user.role)) fail('Housekeeping access is not available for this staff role.', 'FORBIDDEN');
   return user;
 }
 
@@ -314,7 +344,7 @@ export const getStaffBootstrap = webMethod(Permissions.SiteMember, async () => {
 });
 
 export const listBookings = webMethod(Permissions.SiteMember, async (filters = {}) => {
-  await requireStaff();
+  await requireOperationalStaff();
   await expireHolds();
   const start = filters.startDate ? parseDate(filters.startDate, 'Start date') : new Date(0);
   const end = filters.endDate ? new Date(parseDate(filters.endDate, 'End date').getTime() + DAY_MS) : new Date('9999-12-31T00:00:00.000Z');
@@ -325,21 +355,27 @@ export const listBookings = webMethod(Permissions.SiteMember, async (filters = {
 });
 
 export const getBookingDetails = webMethod(Permissions.SiteMember, async bookingId => {
-  await requireStaff();
+  const user = await requireOperationalStaff();
   const booking = await getBookingByReference(bookingId);
   const [guests, payments] = await Promise.all([
     all(C.guests, q => q.eq('bookingId', booking._id)),
     all(C.payments, q => q.eq('bookingId', booking._id).ascending('receivedAt'))
   ]);
+  const financeOnly = user.role === 'accountant';
+  const bookingView = { ...booking, guestIdentity: undefined };
+  if (financeOnly) {
+    bookingView.phone = undefined;
+    bookingView.patientId = undefined;
+  }
   return {
-    booking: { ...booking, guestIdentity: undefined },
-    guests: guests.map(({ _id, name, address, customData }) => ({ _id, name, address, customData })),
+    booking: bookingView,
+    guests: guests.map(({ _id, name, address, customData }) => financeOnly ? ({ _id, name }) : ({ _id, name, address, customData })),
     payments
   };
 });
 
 export const confirmHold = webMethod(Permissions.SiteMember, async (bookingId, requiredPayment, receivedAmount, method, note = '') => {
-  const user = await requireStaff();
+  const user = await requirePaymentStaff();
   const booking = await getBooking(boundedText(bookingId, 'Booking', 100));
   if (booking.status !== 'HOLD' || new Date(booking.holdExpiresAt).getTime() <= Date.now()) fail('This booking hold is no longer active.', 'EXPIRED');
   const threshold = validAmount(requiredPayment, 'Confirmation payment');
@@ -376,7 +412,7 @@ export const confirmHold = webMethod(Permissions.SiteMember, async (bookingId, r
 });
 
 export const createStaffBooking = webMethod(Permissions.SiteMember, async input => {
-  const user = await requireStaff();
+  const user = await requireOperationalStaff();
   await requireInventoryReady();
   if (!input || typeof input !== 'object') fail('Booking details are required.');
   const resourceId = boundedText(input.resourceId, 'Accommodation', 100);
@@ -418,7 +454,7 @@ export const createStaffBooking = webMethod(Permissions.SiteMember, async input 
 });
 
 export const getBillingDetails = webMethod(Permissions.SiteMember, async bookingId => {
-  await requireStaff();
+  await requirePaymentStaff();
   const booking = await getBooking(boundedText(bookingId, 'Booking', 100));
   const payments = await all(C.payments, q => q.eq('bookingId', booking._id).ascending('receivedAt'));
   const total = billTotal(booking);
@@ -433,7 +469,7 @@ export const getBillingDetails = webMethod(Permissions.SiteMember, async booking
 });
 
 export const getReceipt = webMethod(Permissions.SiteMember, async receiptCode => {
-  await requireStaff();
+  await requirePaymentStaff();
   const code = boundedText(receiptCode, 'Receipt number', 100);
   const result = await wixData.query(C.payments).eq('receiptCode', code).limit(1).find(READ);
   const payment = result.items[0];
@@ -443,19 +479,50 @@ export const getReceipt = webMethod(Permissions.SiteMember, async receiptCode =>
 });
 
 export const checkOut = webMethod(Permissions.SiteMember, async bookingId => {
-  const user = await requireStaff();
+  const user = await requireOperationalStaff();
   const booking = await getBooking(boundedText(bookingId, 'Booking', 100));
   if (!['CONFIRMED', 'CHECKED_IN'].includes(booking.status)) fail('Only confirmed or checked-in stays can be checked out.');
   booking.status = 'CHECKED_OUT';
   booking.checkedOutAt = new Date();
+  booking.housekeepingStatus = 'NEEDS_CLEANING';
+  booking.housekeepingUpdatedAt = new Date();
+  booking.housekeepingUpdatedBy = user.id;
   booking.balanceDue = Math.max(0, billTotal(booking) - await paidTotal(booking._id));
   await wixData.update(C.bookings, booking, WRITE);
   await audit(user, 'GUEST_CHECKED_OUT', booking._id, { balanceDue: booking.balanceDue });
   return { bookingCode: booking.bookingCode, status: booking.status, billTotal: billTotal(booking), balanceDue: booking.balanceDue };
 });
 
+
+export const getHousekeepingTasks = webMethod(Permissions.SiteMember, async () => {
+  await requireHousekeepingStaff();
+  const bookings = await all(C.bookings, q => q.eq('status', 'CHECKED_OUT').descending('checkedOutAt'));
+  return bookings
+    .filter(booking => (booking.housekeepingStatus || 'NEEDS_CLEANING') !== 'READY')
+    .map(booking => ({
+      bookingId: booking._id,
+      resourceName: booking.resourceNameSnapshot,
+      checkedOutAt: booking.checkedOutAt,
+      status: booking.housekeepingStatus || 'NEEDS_CLEANING'
+    }));
+});
+
+export const setHousekeepingStatus = webMethod(Permissions.SiteMember, async (bookingId, status) => {
+  const user = await requireHousekeepingStaff();
+  const nextStatus = boundedText(status, 'Cleaning status', 30);
+  if (!['NEEDS_CLEANING', 'IN_PROGRESS', 'READY'].includes(nextStatus)) fail('Choose a supported cleaning status.');
+  const booking = await getBooking(boundedText(bookingId, 'Booking', 100));
+  if (booking.status !== 'CHECKED_OUT') fail('Cleaning can be updated after a stay has checked out.');
+  booking.housekeepingStatus = nextStatus;
+  booking.housekeepingUpdatedAt = new Date();
+  booking.housekeepingUpdatedBy = user.id;
+  await wixData.update(C.bookings, booking, WRITE);
+  await audit(user, 'HOUSEKEEPING_STATUS_UPDATED', booking._id, { status: nextStatus });
+  return { bookingId: booking._id, status: nextStatus };
+});
+
 export const saveCheckIn = webMethod(Permissions.SiteMember, async (bookingId, payload) => {
-  const user = await requireStaff();
+  const user = await requireOperationalStaff();
   const booking = await getBooking(boundedText(bookingId, 'Booking', 100));
   if (!['CONFIRMED', 'CHECKED_IN'].includes(booking.status)) fail('Only confirmed bookings can be checked in.');
   if (!payload || !Array.isArray(payload.guests) || payload.guests.length !== Number(booking.partySize)) fail('Guest list must match the booking party size.');
@@ -529,7 +596,7 @@ async function paidTotal(bookingId) {
 }
 
 export const recordPayment = webMethod(Permissions.SiteMember, async (bookingId, amountValue, method, note = '') => {
-  const user = await requireStaff();
+  const user = await requirePaymentStaff();
   const booking = await getBooking(boundedText(bookingId, 'Booking', 100));
   if (!['CONFIRMED', 'CHECKED_IN', 'CHECKED_OUT'].includes(booking.status)) fail('Payments can only be recorded for confirmed stays.');
   const amount = validAmount(amountValue, 'Payment received');
@@ -558,7 +625,7 @@ export const recordPayment = webMethod(Permissions.SiteMember, async (bookingId,
 });
 
 export const addCashbookEntry = webMethod(Permissions.SiteMember, async entry => {
-  const user = await requireStaff();
+  const user = await requireFinanceStaff();
   if (!entry || !['RECEIPT', 'PAYMENT'].includes(entry.entryType)) fail('Choose receipt or payment.');
   if (!['Cash', 'Bank transfer'].includes(entry.method)) fail('Choose Cash or Bank transfer.');
   const item = await wixData.insert(C.cashbook, {
@@ -571,7 +638,7 @@ export const addCashbookEntry = webMethod(Permissions.SiteMember, async entry =>
 });
 
 export const getFinancialReport = webMethod(Permissions.SiteMember, async (startDate, endDate) => {
-  await requireStaff();
+  await requireFinanceStaff();
   const start = parseDate(startDate, 'Report start date');
   const end = parseDate(endDate, 'Report end date');
   if (end < start) fail('Report end date cannot be before its start date.');
@@ -600,7 +667,7 @@ export const getFinancialReport = webMethod(Permissions.SiteMember, async (start
 });
 
 export const saveBudget = webMethod(Permissions.SiteMember, async budget => {
-  const user = await requireStaff();
+  const user = await requireFinanceStaff();
   const start = parseDate(budget?.periodStart, 'Budget start date');
   const end = parseDate(budget?.periodEnd, 'Budget end date');
   if (end < start) fail('Budget end date cannot be before its start date.');
