@@ -8,8 +8,8 @@ const C = {
   resources: 'Resources', bookings: 'Bookings', locks: 'BookingLocks', guests: 'Guests',
   identity: 'GuestIdentity', payments: 'Payments', cashbook: 'Cashbook', budgets: 'Budgets', settings: 'FacilitySettings', audit: 'AuditLog'
 };
-const STAFF_ROLES = new Set(['Accommodation Staff', 'Accommodation Administrator', 'Admin']);
-const ADMIN_ROLES = new Set(['Accommodation Administrator', 'Admin']);
+const STAFF_ROLES = new Set(['Accommodation Staff', 'Accommodation Administrator', 'Admin', 'Administrator', 'Accountant', 'Caretaker', 'Cleaner']);
+const ADMIN_ROLES = new Set(['Accommodation Administrator', 'Administrator', 'Admin']);
 const READ = { suppressAuth: true };
 const WRITE = { suppressAuth: true };
 const DAY_MS = 86_400_000;
