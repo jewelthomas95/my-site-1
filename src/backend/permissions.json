@@ -40,6 +40,7 @@
       "saveBudget": { "siteOwner": { "invoke": true }, "siteMember": { "invoke": true }, "anonymous": { "invoke": false } },
       "saveResource": { "siteOwner": { "invoke": true }, "siteMember": { "invoke": true }, "anonymous": { "invoke": false } },
       "saveFacilitySettings": { "siteOwner": { "invoke": true }, "siteMember": { "invoke": true }, "anonymous": { "invoke": false } },
+      "getAuditLog": { "siteOwner": { "invoke": true }, "siteMember": { "invoke": true }, "anonymous": { "invoke": false } },
       "getGuestIdentity": { "siteOwner": { "invoke": true }, "siteMember": { "invoke": true }, "anonymous": { "invoke": false } },
       "generateGuestDocumentUploadUrl": { "siteOwner": { "invoke": true }, "siteMember": { "invoke": true }, "anonymous": { "invoke": false } },
       "saveGuestIdentity": { "siteOwner": { "invoke": true }, "siteMember": { "invoke": true }, "anonymous": { "invoke": false } },
