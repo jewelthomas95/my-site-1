@@ -2,50 +2,304 @@
   "web-methods": {
     "*": {
       "*": {
-        "siteOwner": { "invoke": true },
-        "siteMember": { "invoke": false },
-        "anonymous": { "invoke": false }
+        "siteOwner": {
+          "invoke": true
+        },
+        "siteMember": {
+          "invoke": false
+        },
+        "anonymous": {
+          "invoke": false
+        }
       }
     },
     "backend/accommodation.web.js": {
       "getPublicResources": {
-        "siteOwner": { "invoke": true },
-        "siteMember": { "invoke": true },
-        "anonymous": { "invoke": true }
+        "siteOwner": {
+          "invoke": true
+        },
+        "siteMember": {
+          "invoke": true
+        },
+        "anonymous": {
+          "invoke": true
+        }
       },
       "getPublicAvailability": {
-        "siteOwner": { "invoke": true },
-        "siteMember": { "invoke": true },
-        "anonymous": { "invoke": true }
+        "siteOwner": {
+          "invoke": true
+        },
+        "siteMember": {
+          "invoke": true
+        },
+        "anonymous": {
+          "invoke": true
+        }
       },
       "createPublicHold": {
-        "siteOwner": { "invoke": true },
-        "siteMember": { "invoke": true },
-        "anonymous": { "invoke": true }
+        "siteOwner": {
+          "invoke": true
+        },
+        "siteMember": {
+          "invoke": true
+        },
+        "anonymous": {
+          "invoke": true
+        }
       },
-      "getStaffBootstrap": { "siteOwner": { "invoke": true }, "siteMember": { "invoke": true }, "anonymous": { "invoke": false } },
-      "listBookings": { "siteOwner": { "invoke": true }, "siteMember": { "invoke": true }, "anonymous": { "invoke": false } },
-      "getBookingDetails": { "siteOwner": { "invoke": true }, "siteMember": { "invoke": true }, "anonymous": { "invoke": false } },
-      "confirmHold": { "siteOwner": { "invoke": true }, "siteMember": { "invoke": true }, "anonymous": { "invoke": false } },
-      "createStaffBooking": { "siteOwner": { "invoke": true }, "siteMember": { "invoke": true }, "anonymous": { "invoke": false } },
-      "getHousekeepingTasks": { "siteOwner": { "invoke": true }, "siteMember": { "invoke": true }, "anonymous": { "invoke": false } },
-      "setHousekeepingStatus": { "siteOwner": { "invoke": true }, "siteMember": { "invoke": true }, "anonymous": { "invoke": false } },
-      "getBillingDetails": { "siteOwner": { "invoke": true }, "siteMember": { "invoke": true }, "anonymous": { "invoke": false } },
-      "getReceipt": { "siteOwner": { "invoke": true }, "siteMember": { "invoke": true }, "anonymous": { "invoke": false } },
-      "checkOut": { "siteOwner": { "invoke": true }, "siteMember": { "invoke": true }, "anonymous": { "invoke": false } },
-      "saveCheckIn": { "siteOwner": { "invoke": true }, "siteMember": { "invoke": true }, "anonymous": { "invoke": false } },
-      "recordPayment": { "siteOwner": { "invoke": true }, "siteMember": { "invoke": true }, "anonymous": { "invoke": false } },
-      "addCashbookEntry": { "siteOwner": { "invoke": true }, "siteMember": { "invoke": true }, "anonymous": { "invoke": false } },
-      "getFinancialReport": { "siteOwner": { "invoke": true }, "siteMember": { "invoke": true }, "anonymous": { "invoke": false } },
-      "saveBudget": { "siteOwner": { "invoke": true }, "siteMember": { "invoke": true }, "anonymous": { "invoke": false } },
-      "saveResource": { "siteOwner": { "invoke": true }, "siteMember": { "invoke": true }, "anonymous": { "invoke": false } },
-      "saveFacilitySettings": { "siteOwner": { "invoke": true }, "siteMember": { "invoke": true }, "anonymous": { "invoke": false } },
-      "getAuditLog": { "siteOwner": { "invoke": true }, "siteMember": { "invoke": true }, "anonymous": { "invoke": false } },
-      "getGuestIdentity": { "siteOwner": { "invoke": true }, "siteMember": { "invoke": true }, "anonymous": { "invoke": false } },
-      "generateGuestDocumentUploadUrl": { "siteOwner": { "invoke": true }, "siteMember": { "invoke": true }, "anonymous": { "invoke": false } },
-      "saveGuestIdentity": { "siteOwner": { "invoke": true }, "siteMember": { "invoke": true }, "anonymous": { "invoke": false } },
-      "deleteGuestIdentity": { "siteOwner": { "invoke": true }, "siteMember": { "invoke": true }, "anonymous": { "invoke": false } }
+      "getStaffBootstrap": {
+        "siteOwner": {
+          "invoke": true
+        },
+        "siteMember": {
+          "invoke": true
+        },
+        "anonymous": {
+          "invoke": false
+        }
+      },
+      "listBookings": {
+        "siteOwner": {
+          "invoke": true
+        },
+        "siteMember": {
+          "invoke": true
+        },
+        "anonymous": {
+          "invoke": false
+        }
+      },
+      "getBookingDetails": {
+        "siteOwner": {
+          "invoke": true
+        },
+        "siteMember": {
+          "invoke": true
+        },
+        "anonymous": {
+          "invoke": false
+        }
+      },
+      "confirmHold": {
+        "siteOwner": {
+          "invoke": true
+        },
+        "siteMember": {
+          "invoke": true
+        },
+        "anonymous": {
+          "invoke": false
+        }
+      },
+      "createStaffBooking": {
+        "siteOwner": {
+          "invoke": true
+        },
+        "siteMember": {
+          "invoke": true
+        },
+        "anonymous": {
+          "invoke": false
+        }
+      },
+      "getHousekeepingTasks": {
+        "siteOwner": {
+          "invoke": true
+        },
+        "siteMember": {
+          "invoke": true
+        },
+        "anonymous": {
+          "invoke": false
+        }
+      },
+      "setHousekeepingStatus": {
+        "siteOwner": {
+          "invoke": true
+        },
+        "siteMember": {
+          "invoke": true
+        },
+        "anonymous": {
+          "invoke": false
+        }
+      },
+      "getBillingDetails": {
+        "siteOwner": {
+          "invoke": true
+        },
+        "siteMember": {
+          "invoke": true
+        },
+        "anonymous": {
+          "invoke": false
+        }
+      },
+      "getReceipt": {
+        "siteOwner": {
+          "invoke": true
+        },
+        "siteMember": {
+          "invoke": true
+        },
+        "anonymous": {
+          "invoke": false
+        }
+      },
+      "checkOut": {
+        "siteOwner": {
+          "invoke": true
+        },
+        "siteMember": {
+          "invoke": true
+        },
+        "anonymous": {
+          "invoke": false
+        }
+      },
+      "saveCheckIn": {
+        "siteOwner": {
+          "invoke": true
+        },
+        "siteMember": {
+          "invoke": true
+        },
+        "anonymous": {
+          "invoke": false
+        }
+      },
+      "recordPayment": {
+        "siteOwner": {
+          "invoke": true
+        },
+        "siteMember": {
+          "invoke": true
+        },
+        "anonymous": {
+          "invoke": false
+        }
+      },
+      "addCashbookEntry": {
+        "siteOwner": {
+          "invoke": true
+        },
+        "siteMember": {
+          "invoke": true
+        },
+        "anonymous": {
+          "invoke": false
+        }
+      },
+      "getFinancialReport": {
+        "siteOwner": {
+          "invoke": true
+        },
+        "siteMember": {
+          "invoke": true
+        },
+        "anonymous": {
+          "invoke": false
+        }
+      },
+      "saveBudget": {
+        "siteOwner": {
+          "invoke": true
+        },
+        "siteMember": {
+          "invoke": true
+        },
+        "anonymous": {
+          "invoke": false
+        }
+      },
+      "saveResource": {
+        "siteOwner": {
+          "invoke": true
+        },
+        "siteMember": {
+          "invoke": true
+        },
+        "anonymous": {
+          "invoke": false
+        }
+      },
+      "saveFacilitySettings": {
+        "siteOwner": {
+          "invoke": true
+        },
+        "siteMember": {
+          "invoke": true
+        },
+        "anonymous": {
+          "invoke": false
+        }
+      },
+      "getAuditLog": {
+        "siteOwner": {
+          "invoke": true
+        },
+        "siteMember": {
+          "invoke": true
+        },
+        "anonymous": {
+          "invoke": false
+        }
+      },
+      "getGuestIdentity": {
+        "siteOwner": {
+          "invoke": true
+        },
+        "siteMember": {
+          "invoke": true
+        },
+        "anonymous": {
+          "invoke": false
+        }
+      },
+      "generateGuestDocumentUploadUrl": {
+        "siteOwner": {
+          "invoke": true
+        },
+        "siteMember": {
+          "invoke": true
+        },
+        "anonymous": {
+          "invoke": false
+        }
+      },
+      "saveGuestIdentity": {
+        "siteOwner": {
+          "invoke": true
+        },
+        "siteMember": {
+          "invoke": true
+        },
+        "anonymous": {
+          "invoke": false
+        }
+      },
+      "deleteGuestIdentity": {
+        "siteOwner": {
+          "invoke": true
+        },
+        "siteMember": {
+          "invoke": true
+        },
+        "anonymous": {
+          "invoke": false
+        }
+      },
+      "getGuestDocumentUploadStatus": {
+        "siteOwner": {
+          "invoke": true
+        },
+        "siteMember": {
+          "invoke": true
+        },
+        "anonymous": {
+          "invoke": false
+        }
+      }
     }
   }
 }
-
