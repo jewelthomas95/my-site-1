@@ -2,8 +2,8 @@
 // page in the Wix Editor. Add the element IDs referenced below in the editor.
 import {
   getStaffBootstrap, listBookings, getBookingDetails, createStaffBooking,
-  confirmHold, getBillingDetails, recordPayment, saveCheckIn, checkOut,
-  addCashbookEntry, getFinancialReport
+  confirmHold, getBillingDetails, getReceipt, recordPayment, saveCheckIn, checkOut,
+  addCashbookEntry, getFinancialReport, saveBudget
 } from 'backend/accommodation.web';
 
 const $ = selector => $w(selector);
@@ -36,6 +36,7 @@ $w.onReady(async () => {
   $('#recordPayment').onClick(onRecordPayment);
   $('#checkOut').onClick(onCheckOut);
   $('#addLedgerEntry').onClick(onAddLedgerEntry);
+  $('#saveBudget').onClick(onSaveBudget);
   $('#runStatement').onClick(onRunStatement);
 });
 
@@ -97,6 +98,7 @@ async function onConfirmBooking() {
     const result = await confirmHold(selectedBooking, Number(field('#requiredPayment')), Number(field('#confirmationAmount')),
       field('#paymentMethod'), field('#paymentNote') || '');
     setText('#statusMessage', `Confirmed ${result.bookingCode}. Receipt ${result.receiptCode} · ${money(result.paid)} received.`);
+    await printReceipt(result.receiptCode);
     await openBooking(selectedBooking);
   } catch (error) { showError(error); }
 }
@@ -118,6 +120,7 @@ async function onRecordPayment() {
   try {
     const result = await recordPayment(selectedBooking, Number(field('#paymentAmount')), field('#paymentMethod'), field('#paymentNote') || '');
     setText('#statusMessage', `Payment recorded. Receipt ${result.receiptCode}; balance ${money(result.balanceDue)}.`);
+    await printReceipt(result.receiptCode);
     await openBooking(selectedBooking);
   } catch (error) { showError(error); }
 }
@@ -156,6 +159,17 @@ async function onRunStatement() {
   } catch (error) { showError(error); }
 }
 
+async function onSaveBudget() {
+  try {
+    await saveBudget({
+      category: field('#budgetCategory'), amount: Number(field('#budgetAmount')),
+      periodStart: date(field('#budgetStart')), periodEnd: date(field('#budgetEnd')),
+      notes: field('#budgetNotes') || ''
+    });
+    setText('#statusMessage', 'Budget entry saved.');
+  } catch (error) { showError(error); }
+}
+
 function printBill(bill) {
   const lines = bill.lines.map(line => `<div class="row"><span>${escapeHtml(line.description)}</span><span>${money(line.amount)}</span></div>`).join('');
   const html = `<h1>Accommodation Bill</h1><p>${escapeHtml(bill.bookingCode)} · ${escapeHtml(bill.guestName)}</p>
@@ -163,6 +177,19 @@ function printBill(bill) {
     <div class="row total"><span>Total</span><span>${money(bill.billTotal)}</span></div>
     <div class="row"><span>Paid</span><span>${money(bill.amountPaid)}</span></div>
     <div class="row total"><span>Balance due</span><span>${money(bill.balanceDue)}</span></div>`;
+  $('#documentFrame').postMessage({ type: 'printDocument', html });
+}
+
+async function printReceipt(receiptCode) {
+  const receipt = await getReceipt(receiptCode);
+  const html = `<h1>Payment Receipt</h1><p>${escapeHtml(receipt.facilityName)}</p>
+    <div class="row"><span>Receipt number</span><span>${escapeHtml(receipt.receiptCode)}</span></div>
+    <div class="row"><span>Booking</span><span>${escapeHtml(receipt.bookingCode)}</span></div>
+    <div class="row"><span>Guest</span><span>${escapeHtml(receipt.guestName)}</span></div>
+    <div class="row"><span>Received</span><span>${escapeHtml(new Date(receipt.receivedAt).toLocaleString('en-IN'))}</span></div>
+    <div class="row"><span>Method</span><span>${escapeHtml(receipt.method)}</span></div>
+    <div class="row total"><span>Amount received</span><span>${money(receipt.amount)}</span></div>
+    <p>${escapeHtml(receipt.note)}</p>`;
   $('#documentFrame').postMessage({ type: 'printDocument', html });
 }
 
