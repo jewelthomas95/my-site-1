@@ -351,7 +351,14 @@ export const listBookings = webMethod(Permissions.SiteMember, async (filters = {
   let query = wixData.query(C.bookings).ge('startDate', start).lt('startDate', end).descending('startDate');
   if (filters.status) query = query.eq('status', boundedText(filters.status, 'Status', 30));
   const result = await query.limit(1000).find(READ);
-  return result.items.map(booking => ({ ...booking, guestIdentity: undefined }));
+  return result.items.map(booking => {
+    const bookingView = { ...booking, guestIdentity: undefined };
+    if (user.role === 'accountant') {
+      bookingView.phone = undefined;
+      bookingView.patientId = undefined;
+    }
+    return bookingView;
+  });
 });
 
 export const getBookingDetails = webMethod(Permissions.SiteMember, async bookingId => {
