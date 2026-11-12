@@ -1,6 +1,6 @@
 # Haven on Wix Velo
 
-This is the Wix-targeted backend scaffold for the church accommodation app. It uses Velo web modules and Wix CMS collections so guest holds, staff records, and payments can be shared across devices. The existing root-level `app.js` is still the local prototype; it is not connected to these Wix services yet.
+This is the Wix Editor implementation of the church accommodation app. The feature branch contains the Velo backend, CMS-backed booking and accounting data, and a responsive Home-page HTML Component connected through Wix web methods. The root-level `app.js` is a separate local demonstration prototype.
 
 ## App interface (single Wix component)
 
@@ -9,9 +9,9 @@ The working interface is a responsive HTML Component on the Home page, backed by
 1. Add one **Embed Code → Embed HTML** component to Home, stretch it to the page content width, and set its ID to `havenApp`.
 2. Paste `accommodation-setup/page-templates/accommodation-shell.html` into the component's code editor.
 3. The repository's `src/pages/Home.mwzy1.js` acts as the Wix-to-app bridge. Keep the HTML component code and page-code ID in sync.
-4. In Codespaces run `wix dev --tunnel`, then use Preview. Staff booking/account methods and administrator identity methods are role-checked by the backend.
+4. In Codespaces, use the `codex/accommodation-management` branch and run `wix dev --tunnel`. Wix's Local Editor connection is now working. Use Preview to inspect changes; publishing is a separate step.
 
-Do not publish until the Wix media packages, administrator/staff roles, and the private Aadhaar upload flow are configured and verified in Preview. Public booking also requires the unique inventory lock index to be `ACTIVE`.
+Before live use, install the two Wix packages below, assign staff and administrator roles, set the dormitory rate, and verify the private Aadhaar upload and access restrictions in Preview. Public bookings require the inventory-lock unique index to remain `ACTIVE`.
 
 ## Wix site setup
 
@@ -29,13 +29,20 @@ Create Wix member roles titled `Accommodation Staff` and `Accommodation Administ
 
 ## Private identity documents
 
-Install the Wix `@wix/media` and `@wix/essentials` packages in the site before syncing this backend. Aadhaar card images are uploaded using signed upload URLs with `private: true`; the backend checks that each stored image is private and issues five-minute download URLs only after an administrator role check. Manual deletion permanently removes both private images and their identity record.
+From the Codespaces terminal in the repository, install the Wix packages required by the private Aadhaar workflow (run each command once):
+
+```bash
+wix install @wix/media
+wix install @wix/essentials
+```
+
+Aadhaar card images use signed upload URLs with `private: true`; the backend verifies that stored images are private and issues five-minute download URLs only after an administrator role check. Manual deletion permanently removes both private images and their identity record.
 
 ## Optional multi-control page templates
 
 The integrated Home shell above is the default interface for this build. The component pages and long element ID lists below are reference-only; they are not required when using the single Home shell.
 
-The Editor now has pages **Book** (`pi3a5`), **Staff** (`kxsf5`), **Facility Settings** (`n3v4f`), and **Guest Identity** (`mkr5s`). Matching page-code files are included in the draft branch under `src/pages/`. The site repo's `main` branch still needs its Wix UI version synced from the Local Editor before those page-code files can be used.
+The Editor has pages **Book** (`pi3a5`), **Staff** (`kxsf5`), **Facility Settings** (`n3v4f`), and **Guest Identity** (`mkr5s`). Matching page-code files are included in the feature branch under `src/pages/`. The primary workflow uses the Home-page HTML Component; the separate page templates are optional references.
 
 - `public-booking.js`: public availability and 24-hour hold flow. Create a public **Book** page and add the selectors referenced in the file, including the accommodation repeater elements.
 - `staff-dashboard.js`: staff booking creation, hold confirmation, check-in, payment, checkout, bills, ledger entries and period statement. Create a **Staff** page, restrict it to site members, and add the element IDs listed below with suitable Wix input, button, repeater and date picker components.
@@ -56,7 +63,7 @@ Identity page element IDs: `identityMessage`, `bookingId`, `loadGuests`, `identi
 
 - Provisioned on the selected Wix site: the 10 CMS collections, 9 initial resources, default settings (2 pm check-in, 12 pm checkout, ₹100 common-kitchen charge), Wix Members Area, and an `ACTIVE` unique inventory-slot index. The site readiness flag is enabled only after that index became active. Identity/settings uniqueness indexes are still building.
 - Implemented in the draft branch: Wix data schema and backend methods for public availability/holds, staff booking operations, guest check-in records, bill details, receipts, checkout, payment posting, admin-only identity access and private uploads, budget entry/reporting, administrator resource/settings updates, and public booking, staff dashboard and settings page-code templates.
-- Still needs site setup: add the single `havenApp` HTML Component to Home and paste the app shell into it; install the Wix media packages; configure staff and administrator roles; verify private Aadhaar upload and role restrictions in Preview; then review before any live release.
+- Connected in the Wix Editor: the `havenApp` component and its shell are in place, and `wix dev --tunnel` opens the Local Editor from Codespaces. Remaining setup: install the two packages above, assign staff/admin roles, configure the dormitory rate, and verify private identity uploads and permissions in Preview before live use.
 - The public hold service uses the unique inventory-lock index to avoid room/bed conflicts. Do not enable public bookings until the index reports `ACTIVE`.
 - Do not upload real Aadhaar images until the Wix site roles, collection permissions, and private-file flow have been verified on the connected site.
 
