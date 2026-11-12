@@ -353,10 +353,9 @@ export const listBookings = webMethod(Permissions.SiteMember, async (filters = {
   const result = await query.limit(1000).find(READ);
   return result.items.map(booking => {
     const bookingView = { ...booking, guestIdentity: undefined };
-    if (user.role === 'accountant') {
-      bookingView.phone = undefined;
-      bookingView.patientId = undefined;
-    }
+    delete bookingView.phone;
+    delete bookingView.patientId;
+    delete bookingView.customData;
     return bookingView;
   });
 });
@@ -368,6 +367,7 @@ export const getBookingDetails = webMethod(Permissions.SiteMember, async booking
     all(C.guests, q => q.eq('bookingId', booking._id)),
     all(C.payments, q => q.eq('bookingId', booking._id).ascending('receivedAt'))
   ]);
+  await audit(user, 'BOOKING_GUEST_DETAILS_VIEWED', booking._id, { guestCount: guests.length });
   const financeOnly = user.role === 'accountant';
   const bookingView = { ...booking, guestIdentity: undefined };
   if (financeOnly) {
