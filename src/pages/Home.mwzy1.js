@@ -9,7 +9,7 @@ import { authentication } from 'wix-members-frontend';
 import {
   getPublicResources, getPublicAvailability, createPublicHold,
   getStaffBootstrap, listBookings, getBookingDetails, createStaffBooking,
-  getHousekeepingTasks, setHousekeepingStatus,
+  getHousekeepingTasks, setHousekeepingStatus, getAuditLog,
   confirmHold, getBillingDetails, getReceipt, recordPayment, saveCheckIn,
   checkOut, addCashbookEntry, getFinancialReport, saveBudget,
   saveResource, saveFacilitySettings, getGuestIdentity,
@@ -26,6 +26,7 @@ const methods = {
   createStaffBooking,
   getHousekeepingTasks,
   setHousekeepingStatus,
+  getAuditLog,
   confirmHold,
   getBillingDetails,
   getReceipt,
