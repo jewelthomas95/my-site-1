@@ -2,11 +2,22 @@
 
 This is the Wix-targeted backend scaffold for the church accommodation app. It uses Velo web modules and Wix CMS collections so guest holds, staff records, and payments can be shared across devices. The existing root-level `app.js` is still the local prototype; it is not connected to these Wix services yet.
 
+## App interface (single Wix component)
+
+The working interface is a responsive HTML Component on the Home page, backed by the role-checked Velo web methods. This avoids adding dozens of separate Wix controls. To connect it:
+
+1. Add one **Embed Code → Embed HTML** component to Home, stretch it to the page content width, and set its ID to `havenApp`.
+2. Paste `accommodation-setup/page-templates/accommodation-shell.html` into the component's code editor.
+3. The repository's `src/pages/Home.mwzy1.js` acts as the Wix-to-app bridge. Keep the HTML component code and page-code ID in sync.
+4. In Codespaces run `wix dev --tunnel`, then use Preview. Staff booking/account methods and administrator identity methods are role-checked by the backend.
+
+Do not publish until the Wix media packages, administrator/staff roles, and the private Aadhaar upload flow are configured and verified in Preview. Public booking also requires the unique inventory lock index to be `ACTIVE`.
+
 ## Wix site setup
 
 The selected site is **My Site 1** (`ceec11db-0fdb-4bbb-93bf-8a37080b4d24`), a Wix Editor site with Velo enabled. Wix reports it as published at [https://jewelthomas95.wixsite.com/my-site-1](https://jewelthomas95.wixsite.com/my-site-1). The Wix CMS collections have been created there with administrator-only item permissions. Initial room, dormitory, and common-kitchen records and the default facility settings have also been added. Wix Members Area was installed to enable member sign-in.
 
-The site's repository URL is `https://github.com/jewelthomas95/my-site-1.git`. This workspace has no GitHub credentials yet, so downloading the private repository failed. Connect GitHub in Codex to make it available. Wix Git repositories mirror the editor's backend and page code sections. New pages must first be added in the Wix Editor; Git Integration then creates their page-code files. The local files below are not yet running on the site.
+The site's repository is `https://github.com/jewelthomas95/my-site-1.git`. This branch adds the Wix Velo backend and a single-component Home interface. The app shell file must also be pasted into the Wix HTML Component in the Editor so its design is stored in the site UI.
 
 ## Create the Wix data collections
 

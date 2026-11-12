@@ -222,6 +222,7 @@ export const getPublicResources = webMethod(Permissions.Anyone, async () => {
   return resources.map(resource => ({
     id: resource._id, name: resource.name, kind: resource.kind, capacity: resource.capacity,
     dailyRate: resource.dailyRate ?? null, bedsDescription: resource.bedsDescription || '',
+    bathroom: resource.bathroom || '', kitchen: resource.kitchen || '',
     amenities: resource.amenities || []
   }));
 });
