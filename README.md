@@ -14,7 +14,7 @@ The app branch includes a responsive booking and staff interface in `accommodati
 - Accommodation resources and CMS collections have been created on the site.
 - Initial rate for the Dormitory is **₹100 per bed per day**.
 - The booking and staff interfaces display dormitory rates per bed per day.
-- App code recognizes these member role titles: `Administrator`, `Accountant`, `Caretaker`, and `Cleaner`. Create/assign those roles in Wix before staff sign in. Only `Administrator` (and the Wix site `Admin`) can access facility settings and guest identity records.
+- The visible Staff login tab opens Wix sign-in. App access is role-specific: `Administrator` has full access; `Accountant` has bookings and accounts; `Caretaker` has bookings, payment handling, and cleaning; `Cleaner` has a guest-free cleaning task list. Create and assign those Wix member roles before staff sign in. Only `Administrator` (and the Wix site `Admin`) can access facility settings and Aadhaar records.
 - Private Aadhaar storage and access must be verified in Preview before entering real identity information.
 
 ## Local Editor workflow
@@ -24,7 +24,7 @@ The app branch includes a responsive booking and staff interface in `accommodati
 3. Install the Wix packages used by private identity storage: `wix install @wix/media` and `wix install @wix/essentials`.
 4. Run `wix dev --tunnel` and open the Local Editor connection.
 5. Confirm Home has an HTML Component with ID `havenApp`, paste the latest shell into its **Edit Code** panel, and set the component dimensions to fill the page area.
-6. Preview public booking and staff workflows. Verify role access, private Aadhaar files, booking holds, bills, receipts, and financial statements before publishing.
+6. Preview public booking, staff sign-in, role access, cleaning tasks, private Aadhaar files, booking holds, bills, receipts, and financial statements before publishing.
 
 ## Data and security
 
