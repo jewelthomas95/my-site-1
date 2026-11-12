@@ -15,7 +15,7 @@ The app branch includes a responsive booking and staff interface in `accommodati
 - Initial rate for the Dormitory is **₹100 per bed per day**.
 - The booking and staff interfaces display dormitory rates per bed per day.
 - The visible Staff login tab opens Wix sign-in. App access is role-specific: `Administrator` has full access; `Accountant` has bookings and accounts; `Caretaker` has bookings, payment handling, and cleaning; `Cleaner` has a guest-free cleaning task list. Create and assign those Wix member roles before staff sign in. Only `Administrator` (and the Wix site `Admin`) can access facility settings and Aadhaar records.
-- Administrators have an in-app audit log for recent access and changes; the log omits Aadhaar values and photos.
+- Administrators have an in-app audit log for guest-record views and key changes; the log omits Aadhaar values and photos.
 - Private Aadhaar storage and access must be verified in Preview before entering real identity information.
 
 ## Local Editor workflow
