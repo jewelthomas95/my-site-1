@@ -28,6 +28,8 @@
       "getBookingDetails": { "siteOwner": { "invoke": true }, "siteMember": { "invoke": true }, "anonymous": { "invoke": false } },
       "confirmHold": { "siteOwner": { "invoke": true }, "siteMember": { "invoke": true }, "anonymous": { "invoke": false } },
       "createStaffBooking": { "siteOwner": { "invoke": true }, "siteMember": { "invoke": true }, "anonymous": { "invoke": false } },
+      "getHousekeepingTasks": { "siteOwner": { "invoke": true }, "siteMember": { "invoke": true }, "anonymous": { "invoke": false } },
+      "setHousekeepingStatus": { "siteOwner": { "invoke": true }, "siteMember": { "invoke": true }, "anonymous": { "invoke": false } },
       "getBillingDetails": { "siteOwner": { "invoke": true }, "siteMember": { "invoke": true }, "anonymous": { "invoke": false } },
       "getReceipt": { "siteOwner": { "invoke": true }, "siteMember": { "invoke": true }, "anonymous": { "invoke": false } },
       "checkOut": { "siteOwner": { "invoke": true }, "siteMember": { "invoke": true }, "anonymous": { "invoke": false } },
