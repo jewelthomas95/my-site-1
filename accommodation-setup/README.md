@@ -31,7 +31,9 @@ Create Wix member roles titled `Accommodation Staff` and `Accommodation Administ
 
 Install the Wix `@wix/media` and `@wix/essentials` packages in the site before syncing this backend. Aadhaar card images are uploaded using signed upload URLs with `private: true`; the backend checks that each stored image is private and issues five-minute download URLs only after an administrator role check. Manual deletion permanently removes both private images and their identity record.
 
-## Page templates
+## Optional multi-control page templates
+
+The integrated Home shell above is the default interface for this build. The component pages and long element ID lists below are reference-only; they are not required when using the single Home shell.
 
 The Editor now has pages **Book** (`pi3a5`), **Staff** (`kxsf5`), **Facility Settings** (`n3v4f`), and **Guest Identity** (`mkr5s`). Matching page-code files are included in the draft branch under `src/pages/`. The site repo's `main` branch still needs its Wix UI version synced from the Local Editor before those page-code files can be used.
 
@@ -53,8 +55,8 @@ Identity page element IDs: `identityMessage`, `bookingId`, `loadGuests`, `identi
 ## Current state
 
 - Provisioned on the selected Wix site: the 10 CMS collections, 9 initial resources, default settings (2 pm check-in, 12 pm checkout, ₹100 common-kitchen charge), Wix Members Area, and an `ACTIVE` unique inventory-slot index. The site readiness flag is enabled only after that index became active. Identity/settings uniqueness indexes are still building.
-- Implemented locally: Wix data schema and backend methods for public availability/holds, staff booking operations, guest check-in records, bill details, receipts, checkout, payment posting, admin-only identity access and private uploads, budget entry/reporting, administrator resource/settings updates, and public booking, staff dashboard and settings page-code templates.
-- Still needs implementation/connection: sync the new Editor UI version with the IDE, add the controls listed below to each Wix page, configure Members roles and required Wix media packages, then verify in Preview before any live release.
+- Implemented in the draft branch: Wix data schema and backend methods for public availability/holds, staff booking operations, guest check-in records, bill details, receipts, checkout, payment posting, admin-only identity access and private uploads, budget entry/reporting, administrator resource/settings updates, and public booking, staff dashboard and settings page-code templates.
+- Still needs site setup: add the single `havenApp` HTML Component to Home and paste the app shell into it; install the Wix media packages; configure staff and administrator roles; verify private Aadhaar upload and role restrictions in Preview; then review before any live release.
 - The public hold service uses the unique inventory-lock index to avoid room/bed conflicts. Do not enable public bookings until the index reports `ACTIVE`.
 - Do not upload real Aadhaar images until the Wix site roles, collection permissions, and private-file flow have been verified on the connected site.
 
