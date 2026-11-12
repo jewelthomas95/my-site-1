@@ -4,6 +4,8 @@
  * accommodation-shell.html into it, and sync this page code through Git.
  * All writes still pass through the role-checked Velo web methods.
  */
+import { authentication } from 'wix-members-frontend';
+
 import {
   getPublicResources, getPublicAvailability, createPublicHold,
   getStaffBootstrap, listBookings, getBookingDetails, createStaffBooking,
@@ -49,6 +51,16 @@ $w.onReady(() => {
 
     if (request.type === 'haven-ready') {
       app.postMessage({ type: 'haven-init', facilityName: 'Church Accommodation' });
+      return;
+    }
+
+    if (request.type === 'haven-login') {
+      try {
+        await authentication.promptLogin({ mode: 'login', modal: true });
+        app.postMessage({ type: 'haven-authenticated' });
+      } catch (_) {
+        app.postMessage({ type: 'haven-login-cancelled' });
+      }
       return;
     }
 
