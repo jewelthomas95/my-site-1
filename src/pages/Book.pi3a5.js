@@ -60,7 +60,7 @@ $w.onReady(async function () {
   $w('#resourceRepeater').onItemReady(($item, itemData) => {
     $item('#resourceName').text = itemData.name;
     $item('#resourceBeds').text = itemData.bedsDescription || '';
-    $item('#resourceRate').text = itemData.dailyRate == null ? 'Rate not set yet' : `${money(itemData.dailyRate)} per day`;
+    $item('#resourceRate').text = itemData.dailyRate == null ? 'Rate not set yet' : `${money(itemData.dailyRate)} ${itemData.kind === 'dorm' ? 'per bed per day' : 'per day'}`;
     $item('#resourceAvailability').text = itemData.available == null
       ? 'Search dates to see availability'
       : itemData.available === 0
