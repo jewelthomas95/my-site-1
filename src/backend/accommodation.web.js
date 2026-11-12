@@ -762,6 +762,23 @@ export const saveFacilitySettings = webMethod(Permissions.SiteMember, async sett
   return { settingKey, saved: true };
 });
 
+
+export const getAuditLog = webMethod(Permissions.SiteMember, async (startDate = '', endDate = '') => {
+  await requireAdmin();
+  let query = wixData.query(C.audit);
+  if (startDate) query = query.ge('occurredAt', parseDate(startDate, 'Audit start date'));
+  if (endDate) query = query.lt('occurredAt', new Date(parseDate(endDate, 'Audit end date').getTime() + DAY_MS));
+  const result = await query.descending('occurredAt').limit(250).find(READ);
+  return result.items.map(item => ({
+    occurredAt: item.occurredAt,
+    actorId: item.actorId || '',
+    actorRole: item.actorRole || '',
+    action: item.action || '',
+    recordId: item.recordId || '',
+    details: item.details || {}
+  }));
+});
+
 export const getGuestIdentity = webMethod(Permissions.SiteMember, async guestId => {
   const user = await requireAdmin();
   const id = boundedText(guestId, 'Guest', 100);
