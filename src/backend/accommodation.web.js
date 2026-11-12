@@ -110,6 +110,16 @@ async function getBooking(bookingId) {
   return booking;
 }
 
+async function getBookingByReference(reference) {
+  const value = boundedText(reference, 'Booking reference', 120);
+  if (value.startsWith('HV-')) {
+    const result = await wixData.query(C.bookings).eq('bookingCode', value).limit(1).find(READ);
+    if (!result.items[0]) fail('Booking was not found.', 'NOT_FOUND');
+    return result.items[0];
+  }
+  return getBooking(value);
+}
+
 async function removeLocks(bookingId) {
   const locks = await all(C.locks, q => q.eq('bookingId', bookingId));
   await Promise.all(locks.map(lock => wixData.remove(C.locks, lock._id, WRITE)));
@@ -316,7 +326,7 @@ export const listBookings = webMethod(Permissions.SiteMember, async (filters = {
 
 export const getBookingDetails = webMethod(Permissions.SiteMember, async bookingId => {
   await requireStaff();
-  const booking = await getBooking(boundedText(bookingId, 'Booking', 100));
+  const booking = await getBookingByReference(bookingId);
   const [guests, payments] = await Promise.all([
     all(C.guests, q => q.eq('bookingId', booking._id)),
     all(C.payments, q => q.eq('bookingId', booking._id).ascending('receivedAt'))
