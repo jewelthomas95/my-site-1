@@ -1,7 +1,8 @@
 /*
  * Wix Home page code for the accommodation HTML component.
- * Add one Wix HTML Component with the ID `havenApp`, paste the contents of
- * accommodation-shell.html into it, and sync this page code through Git.
+ * Add the desktop Wix HTML Component `havenApp` and, for mobile, the separate
+ * `havenAppMobile` component. Paste accommodation-shell.html into each and sync
+ * this page code through Git.
  * All writes still pass through the role-checked Velo web methods.
  */
 import { authentication } from '@wix/site-members';
