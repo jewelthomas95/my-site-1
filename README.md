@@ -22,7 +22,7 @@ The app branch includes a responsive booking and staff interface, including a mo
 
 1. In Codespaces, switch to `codex/accommodation-management` and pull the latest branch changes.
 2. Run `npm install` if dependencies have not been installed.
-3. The required private identity packages are recorded in `package.json`; run `npm install` to restore them. If Wix reports a missing site package, run `wix install @wix/media` and `wix install @wix/essentials`.
+3. The required Wix packages are recorded in `package.json`; run `npm install` to restore them. If Wix reports a missing site package, run `wix install @wix/media`, `wix install @wix/essentials`, and `wix install @wix/site-members`.
 4. Run `wix dev --tunnel` and open the Local Editor connection.
 5. Confirm Home has an HTML Component with ID `havenApp`, paste the latest shell into its **Edit Code** panel, and set the component dimensions to fill the page area.
 6. Preview public booking, staff sign-in, role access, cleaning tasks, private Aadhaar files, booking holds, date changes and updated bills, receipts, and financial statements before publishing.
