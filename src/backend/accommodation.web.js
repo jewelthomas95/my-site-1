@@ -38,6 +38,10 @@ function parseDate(value, field) {
 }
 
 function dateKey(date) { return date.toISOString().slice(0, 10); }
+function kolkataDayStart(value, field) {
+  const key = dateKey(parseDate(value, field));
+  return new Date(`${key}T00:00:00+05:30`);
+}
 function todayKolkata() {
   const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date());
   const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
@@ -794,13 +798,16 @@ export const addCashbookEntry = webMethod(Permissions.SiteMember, async entry =>
 
 export const getFinancialReport = webMethod(Permissions.SiteMember, async (startDate, endDate) => {
   await requireFinanceStaff();
-  const start = parseDate(startDate, 'Report start date');
-  const end = parseDate(endDate, 'Report end date');
-  if (end < start) fail('Report end date cannot be before its start date.');
-  const endExclusive = new Date(end.getTime() + DAY_MS);
+  const startKey = dateKey(parseDate(startDate, 'Report start date'));
+  const endKey = dateKey(parseDate(endDate, 'Report end date'));
+  if (endKey < startKey) fail('Report end date cannot be before its start date.');
+  const start = kolkataDayStart(startKey, 'Report start date');
+  const endExclusive = new Date(kolkataDayStart(endKey, 'Report end date').getTime() + DAY_MS);
+  const budgetStart = parseDate(startKey, 'Report start date');
+  const budgetEnd = parseDate(endKey, 'Report end date');
   const [entries, budgets] = await Promise.all([
     all(C.cashbook, q => q.ge('entryDate', start).lt('entryDate', endExclusive).ascending('entryDate')),
-    all(C.budgets, q => q.le('periodStart', end).ge('periodEnd', start).ascending('periodStart'))
+    all(C.budgets, q => q.le('periodStart', budgetEnd).ge('periodEnd', budgetStart).ascending('periodStart'))
   ]);
   const receipts = entries.filter(item => item.entryType === 'RECEIPT');
   const payments = entries.filter(item => item.entryType === 'PAYMENT');
@@ -813,7 +820,7 @@ export const getFinancialReport = webMethod(Permissions.SiteMember, async (start
     return result;
   }, {})).map(row => ({ ...row, amount: Math.round(row.amount * 100) / 100 }));
   return {
-    period: { startDate: dateKey(start), endDate: dateKey(end) },
+    period: { startDate: startKey, endDate: endKey },
     receipts: { total: sum(receipts), count: receipts.length, byCategory: categories(receipts), entries: receipts },
     payments: { total: sum(payments), count: payments.length, byCategory: categories(payments), entries: payments },
     net: Math.round((sum(receipts) - sum(payments)) * 100) / 100,
@@ -961,9 +968,12 @@ export const saveFacilitySettings = webMethod(Permissions.SiteMember, async sett
 
 export const getAuditLog = webMethod(Permissions.SiteMember, async (startDate = '', endDate = '') => {
   await requireAdmin();
+  const startKey = startDate ? dateKey(parseDate(startDate, 'Audit start date')) : '';
+  const endKey = endDate ? dateKey(parseDate(endDate, 'Audit end date')) : '';
+  if (startKey && endKey && endKey < startKey) fail('Audit end date cannot be before its start date.');
   let query = wixData.query(C.audit);
-  if (startDate) query = query.ge('occurredAt', parseDate(startDate, 'Audit start date'));
-  if (endDate) query = query.lt('occurredAt', new Date(parseDate(endDate, 'Audit end date').getTime() + DAY_MS));
+  if (startKey) query = query.ge('occurredAt', kolkataDayStart(startKey, 'Audit start date'));
+  if (endKey) query = query.lt('occurredAt', new Date(kolkataDayStart(endKey, 'Audit end date').getTime() + DAY_MS));
   const result = await query.descending('occurredAt').limit(250).find(READ);
   return result.items.map(item => ({
     occurredAt: item.occurredAt,
