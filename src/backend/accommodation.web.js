@@ -215,10 +215,18 @@ async function setLockExpiry(bookingId, holdExpiresAt) {
 async function expireHolds() {
   const now = new Date();
   const expired = await all(C.bookings, q => q.eq('status', 'HOLD').le('holdExpiresAt', now));
-  for (const booking of expired) {
-    booking.status = 'EXPIRED';
-    await wixData.update(C.bookings, booking, WRITE);
-    await removeLocks(booking._id);
+  for (const candidate of expired) {
+    try {
+      await withBookingOperation(candidate._id, async () => {
+        const booking = await wixData.get(C.bookings, candidate._id, { ...READ, consistentRead: true });
+        if (!booking || booking.status !== 'HOLD' || new Date(booking.holdExpiresAt).getTime() > Date.now()) return;
+        booking.status = 'EXPIRED';
+        await wixData.update(C.bookings, booking, WRITE);
+        await removeLocks(booking._id);
+      });
+    } catch (error) {
+      if (error?.code !== 'OPERATION_IN_PROGRESS') throw error;
+    }
   }
 }
 
@@ -468,7 +476,7 @@ async function confirmHoldAction(bookingId, requiredPayment, receivedAmount, met
 export const confirmHold = webMethod(Permissions.SiteMember, async (bookingId, requiredPayment, receivedAmount, method, note = '') =>
   withBookingOperation(bookingId, () => confirmHoldAction(bookingId, requiredPayment, receivedAmount, method, note)));
 
-async function cancelHoldActionbookingId {
+async function cancelHoldAction(bookingId) {
 
   const user = await requireOperationalStaff();
   const booking = await getBooking(boundedText(bookingId, 'Booking', 100));
@@ -560,7 +568,7 @@ export const getReceipt = webMethod(Permissions.SiteMember, async receiptCode =>
   return { receiptCode: payment.receiptCode, amount: payment.amount, method: payment.method, receivedAt: payment.receivedAt, note: payment.note || '', bookingCode: booking.bookingCode, guestName: booking.leadName, facilityName: (await getSetting('general', {})).facilityName || 'Church Accommodation Facility' };
 });
 
-async function checkOutActionbookingId {
+async function checkOutAction(bookingId) {
 
   const user = await requireOperationalStaff();
   const booking = await getBooking(boundedText(bookingId, 'Booking', 100));
