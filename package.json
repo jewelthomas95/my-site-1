@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@wix/essentials": "^1.0.15",
-    "@wix/media": "^1.0.361"
+    "@wix/media": "^1.0.361",
+    "@wix/site-members": "^1.36.0"
   }
 }
