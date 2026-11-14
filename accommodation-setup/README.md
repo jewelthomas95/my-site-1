@@ -29,24 +29,17 @@ Create and assign Wix member roles titled `Administrator`, `Accountant`, `Careta
 
 ## Private identity documents
 
-From the repository root in Codespaces, install the package versions recorded in `package.json`, then sync the Wix site dependencies. Run these once when setting up this branch; if they are already installed and synced, continue to Preview:
+The user confirmed that `@wix/site-members`, `@wix/media`, and `@wix/essentials` are installed and synced. No dependency setup is currently pending. When Codespaces is running, use `wix dev --tunnel` to reconnect the Local Editor. Reinstall a package only if Wix explicitly reports that it is missing.
 
-```bash
-npm install
-wix install @wix/site-members
-wix install @wix/media
-wix install @wix/essentials
-```
-
-`@wix/site-members` powers staff sign-in and sign-out. `@wix/media` and `@wix/essentials` power private Aadhaar photo uploads and secure file access. After syncing, restart `wix dev --tunnel` if it is already running and reopen the Local Editor.
+`@wix/site-members` powers staff sign-in and sign-out. `@wix/media` and `@wix/essentials` power private Aadhaar photo uploads and secure file access.
 
 Aadhaar card images use signed upload URLs with `private: true`; the backend verifies that stored images are private and issues five-minute download URLs only after an administrator role check. Manual deletion permanently removes both private images and their identity record. It checks which images remain before deletion, so a retry can finish removing the record after a partial Wix file-delete result.
 
-## Optional multi-control page templates
+## Alternate multi-page templates (reference only)
 
-The integrated Home shell above is the default interface for this build. The component pages and long element ID lists below are reference-only; they are not required when using the single Home shell.
+The Home-page HTML shell is the production interface. The feature branch now makes the Wix **Book**, **Staff**, **Facility Settings**, and **Guest Identity** page-code files redirect to the Home app, because those Wix pages have no separate layouts. Visitors use the tabs inside the Home app. These code changes are not live until they are synced and published.
 
-The Editor has pages **Book** (`pi3a5`), **Staff** (`kxsf5`), **Facility Settings** (`n3v4f`), and **Guest Identity** (`mkr5s`). Matching page-code files are included in the feature branch under `src/pages/`. The primary workflow uses the Home-page HTML Component; the separate page templates are optional references.
+The `accommodation-setup/page-templates/*.js` files below are optional reference implementations for a future multi-page setup. They require adding and configuring the matching Wix elements first; do not copy them over the current route redirects unless the site is deliberately changed to use separate page layouts.
 
 - `public-booking.js`: public availability and 24-hour hold flow. Create a public **Book** page and add the selectors referenced in the file, including the accommodation repeater elements.
 - `staff-dashboard.js`: staff booking creation, hold confirmation, check-in, payment, checkout, bills, ledger entries and period statement. Create a **Staff** page, restrict it to site members, and add the element IDs listed below with suitable Wix input, button, repeater and date picker components.
@@ -67,7 +60,8 @@ Identity page element IDs: `identityMessage`, `bookingId`, `loadGuests`, `identi
 
 - Provisioned on the selected Wix site: the 10 CMS collections, 9 initial resources, default settings (2 pm check-in, 12 pm checkout, ₹100 common-kitchen charge), Wix Members Area, and an `ACTIVE` unique inventory-slot index. The site readiness flag is enabled only after that index became active. Identity/settings uniqueness indexes are still building.
 - Implemented in the draft branch: Wix data schema and backend methods for public availability/holds, staff booking operations, guest check-in records, bill details, receipts, checkout, payment posting, admin-only identity access and private uploads, budget entry/reporting, administrator resource/settings updates, and public booking, staff dashboard and settings page-code templates.
-- Connected in the Wix Editor: the `havenApp` component and its shell are in place, and `wix dev --tunnel` opens the Local Editor from Codespaces. Remaining setup: install the two packages above, create and assign the four staff roles, and verify the booking, accounts, housekeeping, and private identity flows in Preview before live use. The Dormitory rate is configured at ₹100 per bed per day.
+- The published Home page currently displays the accommodation app. The separate Wix routes were confirmed blank on the live site; the draft branch now redirects them to Home. Wix's `wix-location-frontend.to()` does not work in Preview, so verify those redirects on the published site after syncing and publishing.
+- The user confirmed the Wix packages are installed and synced. The Codespace currently shows as stopped, so the Local Editor connection and Preview checks are pending. Create and assign the four staff roles if they are not already set up, then verify booking, accounts, housekeeping, and private identity flows before live use. The Dormitory rate is configured at ₹100 per bed per day.
 - The public hold service uses the unique inventory-lock index to avoid room/bed conflicts. Do not enable public bookings until the index reports `ACTIVE`.
 - Do not upload real Aadhaar images until the Wix site roles, collection permissions, and private-file flow have been verified on the connected site.
 
