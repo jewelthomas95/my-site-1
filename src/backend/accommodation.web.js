@@ -591,6 +591,111 @@ export const createStaffBooking = webMethod(Permissions.SiteMember, async input 
   return { bookingCode: booking.bookingCode, status: booking.status, expiresAt: booking.holdExpiresAt, estimatedRoomCharge: billTotal(booking) };
 });
 
+async function rescheduleBookingAction(bookingId, startValue, endValue) {
+  const user = await requireOperationalStaff();
+  await requireInventoryReady();
+  await expireHolds();
+  const booking = await getBooking(boundedText(bookingId, 'Booking', 100));
+  if (!['HOLD', 'CONFIRMED', 'CHECKED_IN'].includes(booking.status)) fail('Only active stays can be rescheduled.');
+  if (booking.status === 'HOLD' && new Date(booking.holdExpiresAt).getTime() <= Date.now()) fail('This booking hold has expired.', 'EXPIRED');
+
+  const start = parseDate(startValue, 'New check-in date');
+  const end = parseDate(endValue, 'New checkout date');
+  const startKey = dateKey(start);
+  const endKey = dateKey(end);
+  const todayKey = todayKolkata();
+  if (booking.status === 'CHECKED_IN' && startKey !== dateKey(new Date(booking.startDate))) {
+    fail('The check-in date cannot be changed after the guest has checked in.');
+  }
+  if (startKey < todayKey) fail('The new check-in date cannot be in the past.');
+  if (booking.status === 'CHECKED_IN' && endKey < todayKey) fail('The new checkout date cannot be in the past.');
+
+  const days = stayDays(start, end);
+  const resource = await wixData.get(C.resources, booking.resourceId, READ);
+  if (!resource || resource.kind === 'facility') fail('The accommodation assigned to this stay is no longer available.', 'NOT_FOUND');
+  if (resource.kind !== 'dorm' && Number(booking.partySize || 1) > Number(resource.capacity)) {
+    fail('The room capacity is now below this guest group size. Contact an administrator before changing these dates.');
+  }
+
+  const oldLocks = await all(C.locks, q => q.eq('bookingId', booking._id));
+  const oldBedNumbers = [...new Set(oldLocks.filter(lock => Number(lock.bedNumber) > 0).map(lock => Number(lock.bedNumber)))].sort((a, b) => a - b);
+  const otherLocks = (await activeLocks(days[0], new Date(days[days.length - 1].getTime() + DAY_MS)))
+    .filter(lock => lock.resourceId === resource._id && lock.bookingId !== booking._id);
+  let bedNumbers;
+  if (resource.kind === 'dorm') {
+    const free = [];
+    for (let bed = 1; bed <= Number(resource.capacity); bed++) {
+      if (days.every(day => !otherLocks.some(lock => dateKey(new Date(lock.stayDate)) === dateKey(day) && Number(lock.bedNumber) === bed))) free.push(bed);
+    }
+    const preferred = oldBedNumbers.filter(bed => free.includes(bed));
+    bedNumbers = [...preferred, ...free.filter(bed => !preferred.includes(bed))].slice(0, Number(booking.bedCount || 1));
+    if (bedNumbers.length < Number(booking.bedCount || 1)) fail('There are not enough dormitory beds for the new dates.', 'UNAVAILABLE');
+  } else {
+    if (days.some(day => otherLocks.some(lock => dateKey(new Date(lock.stayDate)) === dateKey(day) && Number(lock.bedNumber) === 0))) {
+      fail('That room is already reserved for one or more of the new dates.', 'UNAVAILABLE');
+    }
+    bedNumbers = [0];
+  }
+
+  const targetSlots = days.flatMap(day => bedNumbers.map(bedNumber => ({
+    slotKey: `${resource._id}|${dateKey(day)}|${bedNumber}`, resourceId: resource._id, bedNumber, stayDate: day
+  })));
+  const targetKeys = new Set(targetSlots.map(slot => slot.slotKey));
+  const existingKeys = new Set(oldLocks.map(lock => lock.slotKey));
+  const inserted = [];
+  try {
+    for (const slot of targetSlots) {
+      if (existingKeys.has(slot.slotKey)) continue;
+      const lock = await wixData.insert(C.locks, {
+        ...slot, bookingId: booking._id,
+        holdExpiresAt: booking.status === 'HOLD' ? booking.holdExpiresAt : null
+      }, WRITE);
+      inserted.push(lock._id);
+    }
+  } catch (_) {
+    await Promise.all(inserted.map(id => wixData.remove(C.locks, id, WRITE).catch(() => undefined)));
+    fail('Those dates were just reserved by someone else. Please choose new dates.', 'UNAVAILABLE');
+  }
+
+  const oldStartDate = dateKey(new Date(booking.startDate));
+  const oldEndDate = dateKey(new Date(booking.endDate));
+  const stayKeys = new Set(days.map(dateKey));
+  booking.startDate = start;
+  booking.endDate = end;
+  booking.kitchenDays = (booking.kitchenDays || []).filter(day => stayKeys.has(dateKey(parseDate(day, 'Kitchen-use date'))));
+  const total = billTotal(booking);
+  const paid = await paidTotal(booking._id);
+  if (total < paid) {
+    await Promise.all(inserted.map(id => wixData.remove(C.locks, id, WRITE).catch(() => undefined)));
+    fail('The new bill would be lower than the amount already received. Adjust the stay or review its payments first.');
+  }
+  booking.balanceDue = Math.max(0, Math.round((total - paid) * 100) / 100);
+  booking.updatedAt = new Date();
+  booking.updatedBy = user.id;
+  try {
+    await wixData.update(C.bookings, booking, WRITE);
+  } catch (error) {
+    await Promise.all(inserted.map(id => wixData.remove(C.locks, id, WRITE).catch(() => undefined)));
+    throw error;
+  }
+
+  const obsolete = oldLocks.filter(lock => Number(lock.bedNumber) >= 0 && !targetKeys.has(lock.slotKey));
+  let cleanupPending = false;
+  for (const lock of obsolete) {
+    try { await wixData.remove(C.locks, lock._id, WRITE); }
+    catch (_) { cleanupPending = true; }
+  }
+  await audit(user, 'BOOKING_DATES_CHANGED', booking._id, {
+    from: { startDate: oldStartDate, endDate: oldEndDate },
+    to: { startDate: startKey, endDate: endKey },
+    billTotal: total, cleanupPending
+  });
+  return { bookingId: booking._id, bookingCode: booking.bookingCode, startDate: startKey, endDate: endKey, billTotal: total, amountPaid: paid, balanceDue: booking.balanceDue, cleanupPending };
+}
+
+export const rescheduleBooking = webMethod(Permissions.SiteMember, async (bookingId, startDate, endDate) =>
+  withBookingOperation(bookingId, () => rescheduleBookingAction(bookingId, startDate, endDate)));
+
 export const getBillingDetails = webMethod(Permissions.SiteMember, async bookingId => {
   await requirePaymentStaff();
   const booking = await getBooking(boundedText(bookingId, 'Booking', 100));
