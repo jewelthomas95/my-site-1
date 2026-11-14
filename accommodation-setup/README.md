@@ -11,7 +11,7 @@ The working interface is a responsive HTML Component on the Home page, backed by
 3. The repository's `src/pages/Home.mwzy1.js` acts as the Wix-to-app bridge. Keep the HTML component code and page-code ID in sync.
 4. In Codespaces, use the `codex/accommodation-management` branch and run `wix dev --tunnel`. Wix's Local Editor connection is now working. Use Preview to inspect changes; publishing is a separate step.
 
-Before live use, install the two Wix packages below, create and assign staff roles, and verify private Aadhaar upload and access restrictions in Preview. The Dormitory is set to ₹100 per bed per day. Public bookings require the inventory-lock unique index to remain `ACTIVE`.
+Before live use, install and sync the repository dependencies, create and assign staff roles, then verify sign-in, booking and payment flows, role-specific access, housekeeping, reports, and private Aadhaar upload/access in Preview. The Dormitory is set to ₹100 per bed per day. Public bookings require the inventory-lock unique index to remain `ACTIVE`. The Dormitory is set to ₹100 per bed per day. Public bookings require the inventory-lock unique index to remain `ACTIVE`.
 
 ## Wix site setup
 
@@ -29,12 +29,16 @@ Create and assign Wix member roles titled `Administrator`, `Accountant`, `Careta
 
 ## Private identity documents
 
-From the Codespaces terminal in the repository, install the Wix packages required by the private Aadhaar workflow (run each command once):
+From the repository root in Codespaces, install the package versions recorded in `package.json`, then sync the Wix site dependencies. Run these once when setting up this branch; if they are already installed and synced, continue to Preview:
 
 ```bash
+npm install
+wix install @wix/site-members
 wix install @wix/media
 wix install @wix/essentials
 ```
+
+`@wix/site-members` powers staff sign-in and sign-out. `@wix/media` and `@wix/essentials` power private Aadhaar photo uploads and secure file access. After syncing, restart `wix dev --tunnel` if it is already running and reopen the Local Editor.
 
 Aadhaar card images use signed upload URLs with `private: true`; the backend verifies that stored images are private and issues five-minute download URLs only after an administrator role check. Manual deletion permanently removes both private images and their identity record. It checks which images remain before deletion, so a retry can finish removing the record after a partial Wix file-delete result.
 
