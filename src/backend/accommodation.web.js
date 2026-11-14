@@ -399,7 +399,9 @@ export const createPublicHold = webMethod(Permissions.Anyone, async input => {
     kitchenDays: [], facilityUses: [], customData: {}, createdAt: new Date(), checkInTimeSnapshot: settings.checkIn, checkOutTimeSnapshot: settings.checkOut
   }, WRITE);
   try {
-    await claimSlots(booking, resource, days);
+    const currentResource = await wixData.get(C.resources, resourceId, { ...READ, consistentRead: true });
+    if (!currentResource || !currentResource.active) fail('That accommodation is no longer available.', 'NOT_FOUND');
+    await claimSlots(booking, currentResource, days);
     booking.status = 'HOLD';
     await wixData.update(C.bookings, booking, WRITE);
   } catch (error) {
@@ -579,7 +581,9 @@ export const createStaffBooking = webMethod(Permissions.SiteMember, async input 
     checkInTimeSnapshot: settings.checkIn, checkOutTimeSnapshot: settings.checkOut
   }, WRITE);
   try {
-    await claimSlots(booking, resource, days);
+    const currentResource = await wixData.get(C.resources, resourceId, { ...READ, consistentRead: true });
+    if (!currentResource || !currentResource.active) fail('That accommodation is no longer available.', 'NOT_FOUND');
+    await claimSlots(booking, currentResource, days);
     booking.status = 'HOLD';
     await wixData.update(C.bookings, booking, WRITE);
   } catch (error) {
@@ -1059,15 +1063,27 @@ export const saveResource = webMethod(Permissions.SiteMember, async resourceInpu
 export const deleteResource = webMethod(Permissions.SiteMember, async resourceId => {
   const user = await requireAdmin();
   const id = boundedText(resourceId, 'Resource ID', 100);
-  const resource = await wixData.get(C.resources, id, { ...READ, consistentRead: true });
+  let resource = await wixData.get(C.resources, id, { ...READ, consistentRead: true });
   if (!resource) fail('Resource was not found.', 'NOT_FOUND');
+
+  // Disable new requests before checking history. Booking creation rechecks the
+  // resource after inserting its temporary booking record to close this race.
+  if (resource.active !== false) {
+    resource = await wixData.update(C.resources, {
+      ...resource, active: false, updatedAt: new Date(), updatedBy: user.id
+    }, WRITE);
+  }
 
   const [bookings, locks] = await Promise.all([
     all(C.bookings, q => q.eq('resourceId', id), { ...READ, consistentRead: true }),
     all(C.locks, q => q.eq('resourceId', id), { ...READ, consistentRead: true })
   ]);
-  if (bookings.length) fail('This resource has booking history. Mark it inactive to preserve its records.');
-  if (locks.length) fail('This resource still has inventory locks. Clear the holds before deleting it.');
+  if (bookings.length || locks.length) {
+    await audit(user, 'RESOURCE_ARCHIVED', id, {
+      name: resource.name, bookingHistory: bookings.length > 0, inventoryLocks: locks.length
+    });
+    return { id, name: resource.name, archived: true };
+  }
 
   const kitchenResult = await wixData.query(C.settings).eq('settingKey', 'commonKitchen').limit(1).find(READ);
   const kitchenRecord = kitchenResult.items[0];
@@ -1084,7 +1100,7 @@ export const deleteResource = webMethod(Permissions.SiteMember, async resourceId
 
   await wixData.remove(C.resources, id, WRITE);
   await audit(user, 'RESOURCE_DELETED', id, { name: resource.name });
-  return { id, name: resource.name };
+  return { id, name: resource.name, archived: false };
 });
 
 export const saveFacilitySettings = webMethod(Permissions.SiteMember, async settingsInput => {
