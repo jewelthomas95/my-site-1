@@ -7,7 +7,7 @@
 import { authentication } from 'wix-members-frontend';
 
 import {
-  getPublicResources, getPublicSettings, getPublicAvailability, createPublicHold,
+  getPublicResources, getPublicSettings, getPublicAvailability, createPublicHold, rescheduleBooking,
   getStaffBootstrap, listBookings, getBookingDetails, createStaffBooking,
   getHousekeepingTasks, setHousekeepingStatus, getAuditLog,
   confirmHold, cancelHold, getBillingDetails, getReceipt, recordPayment, saveCheckIn,
@@ -21,6 +21,7 @@ const methods = {
   getPublicSettings,
   getPublicAvailability,
   createPublicHold,
+  rescheduleBooking,
   getStaffBootstrap,
   listBookings,
   getBookingDetails,
