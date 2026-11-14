@@ -642,8 +642,8 @@ export const saveCheckIn = webMethod(Permissions.SiteMember, async (bookingId, p
 });
 
 async function paidTotal(bookingId) {
-  const result = await wixData.query(C.payments).eq('bookingId', bookingId).limit(1000).find(READ);
-  return result.items.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  const payments = await all(C.payments, q => q.eq('bookingId', bookingId));
+  return payments.reduce((sum, item) => sum + Number(item.amount || 0), 0);
 }
 
 export const recordPayment = webMethod(Permissions.SiteMember, async (bookingId, amountValue, method, note = '') => {
