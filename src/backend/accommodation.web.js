@@ -488,16 +488,31 @@ export const getReceipt = webMethod(Permissions.SiteMember, async receiptCode =>
 export const checkOut = webMethod(Permissions.SiteMember, async bookingId => {
   const user = await requireOperationalStaff();
   const booking = await getBooking(boundedText(bookingId, 'Booking', 100));
-  if (!['CONFIRMED', 'CHECKED_IN'].includes(booking.status)) fail('Only confirmed or checked-in stays can be checked out.');
-  booking.status = 'CHECKED_OUT';
-  booking.checkedOutAt = new Date();
-  booking.housekeepingStatus = 'NEEDS_CLEANING';
-  booking.housekeepingUpdatedAt = new Date();
-  booking.housekeepingUpdatedBy = user.id;
-  booking.balanceDue = Math.max(0, billTotal(booking) - await paidTotal(booking._id));
-  await wixData.update(C.bookings, booking, WRITE);
-  await audit(user, 'GUEST_CHECKED_OUT', booking._id, { balanceDue: booking.balanceDue });
-  return { bookingCode: booking.bookingCode, status: booking.status, billTotal: billTotal(booking), balanceDue: booking.balanceDue };
+  if (!['CONFIRMED', 'CHECKED_IN', 'CHECKED_OUT'].includes(booking.status)) fail('Only confirmed or checked-in stays can be checked out.');
+
+  const today = parseDate(todayKolkata(), 'Today');
+  let releasedFutureSlots = 0;
+  if (booking.status !== 'CHECKED_OUT') {
+    booking.status = 'CHECKED_OUT';
+    booking.checkedOutAt = new Date();
+    booking.housekeepingStatus = 'NEEDS_CLEANING';
+    booking.housekeepingUpdatedAt = new Date();
+    booking.housekeepingUpdatedBy = user.id;
+    booking.balanceDue = Math.max(0, billTotal(booking) - await paidTotal(booking._id));
+    await wixData.update(C.bookings, booking, WRITE);
+  }
+
+  // Keep today's slot protected for safe turnover; release only unused future dates.
+  const futureLocks = await all(C.locks, q => q.eq('bookingId', booking._id).gt('stayDate', today));
+  releasedFutureSlots = futureLocks.length;
+  await Promise.all(futureLocks.map(lock => wixData.remove(C.locks, lock._id, WRITE)));
+  if (releasedFutureSlots && booking.checkedOutAt && booking.status === 'CHECKED_OUT') {
+    await audit(user, 'FUTURE_STAY_SLOTS_RELEASED', booking._id, { count: releasedFutureSlots });
+  }
+  if (!booking.checkedOutAt || new Date(booking.checkedOutAt).getTime() > Date.now() - 5000) {
+    await audit(user, 'GUEST_CHECKED_OUT', booking._id, { balanceDue: booking.balanceDue, releasedFutureSlots });
+  }
+  return { bookingCode: booking.bookingCode, status: booking.status, billTotal: billTotal(booking), balanceDue: booking.balanceDue, releasedFutureSlots };
 });
 
 
