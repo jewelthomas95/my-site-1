@@ -1055,6 +1055,38 @@ export const saveResource = webMethod(Permissions.SiteMember, async resourceInpu
   return { id: saved._id, name: saved.name, active: saved.active };
 });
 
+
+export const deleteResource = webMethod(Permissions.SiteMember, async resourceId => {
+  const user = await requireAdmin();
+  const id = boundedText(resourceId, 'Resource ID', 100);
+  const resource = await wixData.get(C.resources, id, { ...READ, consistentRead: true });
+  if (!resource) fail('Resource was not found.', 'NOT_FOUND');
+
+  const [bookings, locks] = await Promise.all([
+    all(C.bookings, q => q.eq('resourceId', id), { ...READ, consistentRead: true }),
+    all(C.locks, q => q.eq('resourceId', id), { ...READ, consistentRead: true })
+  ]);
+  if (bookings.length) fail('This resource has booking history. Mark it inactive to preserve its records.');
+  if (locks.length) fail('This resource still has inventory locks. Clear the holds before deleting it.');
+
+  const kitchenResult = await wixData.query(C.settings).eq('settingKey', 'commonKitchen').limit(1).find(READ);
+  const kitchenRecord = kitchenResult.items[0];
+  if (kitchenRecord && Array.isArray(kitchenRecord.value?.eligibleResourceIds)
+    && kitchenRecord.value.eligibleResourceIds.includes(id)) {
+    await wixData.update(C.settings, {
+      ...kitchenRecord,
+      value: {
+        ...kitchenRecord.value,
+        eligibleResourceIds: kitchenRecord.value.eligibleResourceIds.filter(resourceIdValue => resourceIdValue !== id)
+      }
+    }, WRITE);
+  }
+
+  await wixData.remove(C.resources, id, WRITE);
+  await audit(user, 'RESOURCE_DELETED', id, { name: resource.name });
+  return { id, name: resource.name };
+});
+
 export const saveFacilitySettings = webMethod(Permissions.SiteMember, async settingsInput => {
   const user = await requireAdmin();
   const settingKey = boundedText(settingsInput?.settingKey, 'Settings section', 80);
