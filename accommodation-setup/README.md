@@ -11,11 +11,11 @@ The working interface is a responsive HTML Component on the Home page, backed by
 3. The repository's `src/pages/Home.mwzy1.js` bridges both components (`havenApp` and `havenAppMobile`) to the same role-checked backend. Keep both embedded shell copies and IDs in sync.
 4. In Codespaces, use the `codex/accommodation-management` branch and run `wix dev --tunnel` to connect the Local Editor. Use its Preview on desktop and mobile to inspect changes; publishing is a separate step.
 
-Before live use, install and sync the repository dependencies, create and assign staff roles, then verify sign-in, booking and payment flows, role-specific access, housekeeping, reports, and private Aadhaar upload/access in Preview. The Dormitory is set to ₹100 per bed per day. Public bookings require the inventory-lock unique index to remain `ACTIVE`. The Dormitory is set to ₹100 per bed per day. Public bookings require the inventory-lock unique index to remain `ACTIVE`.
+Before live use, install and sync the repository dependencies, create and assign staff roles, then verify sign-in, booking and payment flows, role-specific access, housekeeping, reports, and private Aadhaar upload/access in Preview. The Dormitory is set to ₹100 per bed per day. Public bookings require the inventory-lock unique index to remain `ACTIVE`.
 
 ## Wix site setup
 
-The selected site is **My Site 1** (`ceec11db-0fdb-4bbb-93bf-8a37080b4d24`), a Wix Editor site with Velo enabled. Wix reports it as published at [https://jewelthomas95.wixsite.com/my-site-1](https://jewelthomas95.wixsite.com/my-site-1). The Wix CMS collections have been created there with administrator-only item permissions. Initial room, dormitory, and common-kitchen records and the default facility settings have also been added. Wix Members Area was installed to enable member sign-in.
+The selected site is **My Site 1** (`ceec11db-0fdb-4bbb-93bf-8a37080b4d24`), a Wix Editor site with Velo enabled. Wix reports it as published at [https://jewelthomas95.wixsite.com/bmtc](https://jewelthomas95.wixsite.com/my-site-1). The Wix CMS collections have been created there with administrator-only item permissions. Initial room, dormitory, and common-kitchen records and the default facility settings have also been added. Wix Members Area was installed to enable member sign-in.
 
 The site's repository is `https://github.com/jewelthomas95/my-site-1.git`. This branch adds the Wix Velo backend and a single-component Home interface. The app shell file must also be pasted into the Wix HTML Component in the Editor so its design is stored in the site UI.
 
