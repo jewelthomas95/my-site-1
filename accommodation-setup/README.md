@@ -36,7 +36,7 @@ wix install @wix/media
 wix install @wix/essentials
 ```
 
-Aadhaar card images use signed upload URLs with `private: true`; the backend verifies that stored images are private and issues five-minute download URLs only after an administrator role check. Manual deletion permanently removes both private images and their identity record.
+Aadhaar card images use signed upload URLs with `private: true`; the backend verifies that stored images are private and issues five-minute download URLs only after an administrator role check. Manual deletion permanently removes both private images and their identity record. It checks which images remain before deletion, so a retry can finish removing the record after a partial Wix file-delete result.
 
 ## Optional multi-control page templates
 
