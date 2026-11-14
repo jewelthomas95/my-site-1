@@ -960,24 +960,28 @@ export const saveFacilitySettings = webMethod(Permissions.SiteMember, async sett
   if (settingKey === 'chargeableFacilities') {
     if (!Array.isArray(value.items)) fail('Chargeable facilities must be provided as an items list.');
     const units = new Set(['per-day', 'per-person-day', 'per-stay', 'per-person-stay']);
-    value = { items: value.items.map((item, index) => {
+    const items = value.items.map((item, index) => {
       const id = boundedText(item.id || `facility-${index + 1}`, 'Facility ID', 100);
       const unit = boundedText(item.unit, 'Facility price unit', 40);
       if (!units.has(unit)) fail('Choose a supported facility price unit.');
       return { id, name: boundedText(item.name, 'Facility name', 100), active: item.active !== false, unit, rate: validAmount(item.rate, 'Facility rate', true) };
-    }) };
+    });
+    if (new Set(items.map(item => item.id)).size !== items.length) fail('Each chargeable facility must have a unique ID.');
+    value = { items };
   }
   if (settingKey === 'guestFields') {
     if (!Array.isArray(value.fields)) fail('Guest fields must be provided as a fields list.');
     const types = new Set(['text', 'number', 'date', 'select', 'boolean']);
-    value = { fields: value.fields.map((field, index) => {
+    const fields = value.fields.map((field, index) => {
       const id = boundedText(field.id || `guest-field-${index + 1}`, 'Guest field ID', 80);
       const type = boundedText(field.type || 'text', 'Guest field type', 20);
       if (!types.has(type)) fail('Choose a supported guest field type.');
       const options = Array.isArray(field.options) ? field.options.map(option => boundedText(option, 'Field option', 80)).slice(0, 50) : [];
       if (type === 'select' && !options.length) fail('Select fields need at least one option.');
       return { id, label: boundedText(field.label, 'Guest field label', 100), type, required: field.required === true, active: field.active !== false, options };
-    }) };
+    });
+    if (new Set(fields.map(field => field.id)).size !== fields.length) fail('Each guest field must have a unique ID.');
+    value = { fields };
   }
   const found = await wixData.query(C.settings).eq('settingKey', settingKey).limit(1).find(READ);
   const saved = found.items[0]
