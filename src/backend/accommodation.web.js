@@ -697,12 +697,6 @@ async function saveCheckInAction(bookingId, payload) {
       address: index === 0 ? boundedText(payload.address, 'Address', 500, false) : '', customData
     };
   });
-  const existing = await all(C.guests, q => q.eq('bookingId', booking._id));
-  for (let index = 0; index < guests.length; index += 1) {
-    if (existing[index]) await wixData.update(C.guests, { ...guests[index], _id: existing[index]._id }, WRITE);
-    else await wixData.insert(C.guests, guests[index], WRITE);
-  }
-  await Promise.all(existing.slice(guests.length).map(item => wixData.remove(C.guests, item._id, WRITE)));
   booking.patientId = boundedText(payload.patientId, 'Patient ID', 100, false);
   const stayDateKeys = new Set(stayDays(new Date(booking.startDate), new Date(booking.endDate)).map(dateKey));
   const kitchenDays = (payload.kitchenDays || []).map(day => dateKey(parseDate(day, 'Kitchen-use date')));
@@ -723,6 +717,12 @@ async function saveCheckInAction(bookingId, payload) {
     if (facility.unit.includes('day') && (!Number.isInteger(quantity) || quantity > stayDateKeys.size)) fail('Per-day facility quantity must be whole days within the stay.');
     return { facilityId: facility.id, name: facility.name, unit: facility.unit, rate: Number(facility.rate), quantity };
   });
+  const existing = await all(C.guests, q => q.eq('bookingId', booking._id));
+  for (let index = 0; index < guests.length; index += 1) {
+    if (existing[index]) await wixData.update(C.guests, { ...guests[index], _id: existing[index]._id }, WRITE);
+    else await wixData.insert(C.guests, guests[index], WRITE);
+  }
+  await Promise.all(existing.slice(guests.length).map(item => wixData.remove(C.guests, item._id, WRITE)));
   booking.customData = {};
   booking.status = 'CHECKED_IN';
   booking.checkedInAt = new Date();
