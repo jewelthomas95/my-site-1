@@ -6,7 +6,7 @@ This repository contains the Wix Velo code for the church accommodation app on *
 
 Wix Git Integration tracks this repository's default branch, `main`. The app is currently on the open draft pull request [#1](https://github.com/jewelthomas95/my-site-1/pull/1), so the published site still uses the original Home page code. The Home page bridge is in `src/pages/Home.mwzy1.js`; the page also needs the accommodation HTML in the `havenApp` component.
 
-The app branch includes a responsive booking and staff interface, including a month-by-month stay calendar with space filters, in `accommodation-setup/page-templates/accommodation-shell.html`. The component's contents are stored in Wix Editor rather than this repo, so keep the Wix component in sync by copying the full shell file into the `havenApp` HTML component code editor. The component should span the page content width and have enough height to show the app without an inner scroll bar.
+The app branch includes a responsive booking and staff interface, including a month-by-month stay calendar with space filters and staff rescheduling for active stays, in `accommodation-setup/page-templates/accommodation-shell.html`. The component's contents are stored in Wix Editor rather than this repo, so keep the Wix component in sync by copying the full shell file into the `havenApp` HTML component code editor. The component should span the page content width and have enough height to show the app without an inner scroll bar.
 
 ## Current setup
 
@@ -25,7 +25,7 @@ The app branch includes a responsive booking and staff interface, including a mo
 3. The required private identity packages are recorded in `package.json`; run `npm install` to restore them. If Wix reports a missing site package, run `wix install @wix/media` and `wix install @wix/essentials`.
 4. Run `wix dev --tunnel` and open the Local Editor connection.
 5. Confirm Home has an HTML Component with ID `havenApp`, paste the latest shell into its **Edit Code** panel, and set the component dimensions to fill the page area.
-6. Preview public booking, staff sign-in, role access, cleaning tasks, private Aadhaar files, booking holds, bills, receipts, and financial statements before publishing.
+6. Preview public booking, staff sign-in, role access, cleaning tasks, private Aadhaar files, booking holds, date changes and updated bills, receipts, and financial statements before publishing.
 
 ## Data and security
 
