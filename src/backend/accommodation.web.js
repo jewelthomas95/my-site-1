@@ -154,6 +154,7 @@ async function getBookingByReference(reference) {
   return getBooking(value);
 }
 
+// The unique slotKey index serializes one booking's mutations; negative bedNumber keeps markers out of room availability.
 async function withBookingOperation(bookingId, action) {
   const id = boundedText(bookingId, 'Booking', 100);
   const slotKey = `__operation__|${id}`;
