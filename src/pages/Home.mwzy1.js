@@ -69,6 +69,15 @@ $w.onReady(() => {
       }
       return;
     }
+    if (request.type === 'haven-logout') {
+      try {
+        await authentication.logout();
+        app.postMessage({ type: 'haven-logged-out' });
+      } catch (_) {
+        app.postMessage({ type: 'haven-logout-failed' });
+      }
+      return;
+    }
 
     if (request.type !== 'haven-request'
       || typeof request.id !== 'string'
