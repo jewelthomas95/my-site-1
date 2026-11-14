@@ -619,7 +619,8 @@ export const getHousekeepingTasks = webMethod(Permissions.SiteMember, async () =
     }));
 });
 
-export const setHousekeepingStatus = webMethod(Permissions.SiteMember, async (bookingId, status) => {
+async function setHousekeepingStatusAction(bookingId, status) {
+
   const user = await requireHousekeepingStaff();
   const nextStatus = boundedText(status, 'Cleaning status', 30);
   if (!['NEEDS_CLEANING', 'IN_PROGRESS', 'READY'].includes(nextStatus)) fail('Choose a supported cleaning status.');
@@ -631,7 +632,10 @@ export const setHousekeepingStatus = webMethod(Permissions.SiteMember, async (bo
   await wixData.update(C.bookings, booking, WRITE);
   await audit(user, 'HOUSEKEEPING_STATUS_UPDATED', booking._id, { status: nextStatus });
   return { bookingId: booking._id, status: nextStatus };
-});
+}
+
+export const setHousekeepingStatus = webMethod(Permissions.SiteMember, async (bookingId, status) =>
+  withBookingOperation(bookingId, () => setHousekeepingStatusAction(bookingId, status)));
 
 async function saveCheckInAction(bookingId, payload) {
 
