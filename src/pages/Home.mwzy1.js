@@ -13,7 +13,7 @@ import {
   getHousekeepingTasks, setHousekeepingStatus, getAuditLog,
   confirmHold, cancelHold, getBillingDetails, getReceipt, recordPayment, saveCheckIn,
   checkOut, addCashbookEntry, getFinancialReport, listBudgets, saveBudget,
-  saveResource, saveFacilitySettings, getGuestIdentity,
+  saveResource, deleteResource, saveFacilitySettings, getGuestIdentity,
   generateGuestDocumentUploadUrl, getGuestDocumentUploadStatus, saveGuestIdentity, deleteGuestIdentity
 } from 'backend/accommodation.web';
 
@@ -42,6 +42,7 @@ const methods = {
   listBudgets,
   saveBudget,
   saveResource,
+  deleteResource,
   saveFacilitySettings,
   getGuestIdentity,
   generateGuestDocumentUploadUrl,
