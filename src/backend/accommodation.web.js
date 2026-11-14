@@ -1013,7 +1013,7 @@ export const saveResource = webMethod(Permissions.SiteMember, async resourceInpu
   if (!resourceInput || typeof resourceInput !== 'object') fail('Resource details are required.');
   const resource = {
     name: boundedText(resourceInput.name, 'Resource name', 100),
-    kind: ['private', 'dorm', 'facility'].includes(resourceInput.kind) ? resourceInput.kind : fail('Choose a supported resource type.'),
+    kind: ['private', 'dorm'].includes(resourceInput.kind) ? resourceInput.kind : fail('Choose a private room or dormitory. Add chargeable items in Facility Settings.'),
     active: resourceInput.active !== false,
     capacity: Math.max(1, Math.min(100, Number(resourceInput.capacity || 1))),
     dailyRate: resourceInput.dailyRate === '' || resourceInput.dailyRate == null ? null : validAmount(resourceInput.dailyRate, 'Daily rate', true),
