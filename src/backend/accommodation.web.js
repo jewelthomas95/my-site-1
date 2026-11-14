@@ -377,6 +377,7 @@ export const createPublicHold = webMethod(Permissions.Anyone, async input => {
     booking.status = 'HOLD';
     await wixData.update(C.bookings, booking, WRITE);
   } catch (error) {
+    await removeLocks(booking._id).catch(() => undefined);
     await wixData.remove(C.bookings, booking._id, WRITE).catch(() => undefined);
     throw error;
   }
