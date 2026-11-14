@@ -92,6 +92,12 @@ async function requireOperationalStaff() {
   return user;
 }
 
+async function requireCheckInStaff() {
+  const user = await requireStaff();
+  if (!['admin', 'caretaker'].includes(user.role)) fail('Guest check-in details are restricted to the Administrator and Caretaker.', 'FORBIDDEN');
+  return user;
+}
+
 async function requirePaymentStaff() {
   const user = await requireStaff();
   if (!['admin', 'accountant', 'caretaker'].includes(user.role)) fail('Payment access is not available for this staff role.', 'FORBIDDEN');
@@ -639,7 +645,7 @@ export const setHousekeepingStatus = webMethod(Permissions.SiteMember, async (bo
 
 async function saveCheckInAction(bookingId, payload) {
 
-  const user = await requireOperationalStaff();
+  const user = await requireCheckInStaff();
   const booking = await getBooking(boundedText(bookingId, 'Booking', 100));
   if (!['CONFIRMED', 'CHECKED_IN'].includes(booking.status)) fail('Only confirmed bookings can be checked in.');
   if (!payload || !Array.isArray(payload.guests) || payload.guests.length !== Number(booking.partySize)) fail('Guest list must match the booking party size.');
