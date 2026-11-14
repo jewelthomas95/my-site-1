@@ -418,6 +418,27 @@ export const confirmHold = webMethod(Permissions.SiteMember, async (bookingId, r
   return { bookingCode: booking.bookingCode, status: booking.status, billTotal: billTotal(booking), paid: amount, balanceDue: Math.max(0, billTotal(booking) - amount), receiptCode: payment.receiptCode };
 });
 
+export const cancelHold = webMethod(Permissions.SiteMember, async bookingId => {
+  const user = await requireOperationalStaff();
+  const booking = await getBooking(boundedText(bookingId, 'Booking', 100));
+  const alreadyCancelled = booking.status === 'CANCELLED';
+  if (!alreadyCancelled && booking.status !== 'HOLD') fail('Only a pending unpaid hold can be cancelled.');
+  if (!alreadyCancelled) {
+    const payments = await all(C.payments, q => q.eq('bookingId', booking._id));
+    if (payments.length) fail('This booking has a payment record and cannot be cancelled as an unpaid hold.');
+    booking.status = 'CANCELLED';
+    booking.cancelledAt = new Date();
+    booking.cancelledBy = user.id;
+    await wixData.update(C.bookings, booking, WRITE);
+  }
+
+  // Retrying a cancelled hold safely removes any locks left by a partial cleanup.
+  const locks = await all(C.locks, q => q.eq('bookingId', booking._id));
+  await Promise.all(locks.map(lock => wixData.remove(C.locks, lock._id, WRITE)));
+  if (!alreadyCancelled) await audit(user, 'BOOKING_HOLD_CANCELLED', booking._id, { bookingCode: booking.bookingCode });
+  return { bookingCode: booking.bookingCode, status: 'CANCELLED', releasedSlots: locks.length };
+});
+
 export const createStaffBooking = webMethod(Permissions.SiteMember, async input => {
   const user = await requireOperationalStaff();
   await requireInventoryReady();
