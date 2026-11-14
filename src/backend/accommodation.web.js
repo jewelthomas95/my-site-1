@@ -994,6 +994,19 @@ export const getGuestDocumentUploadStatus = webMethod(Permissions.SiteMember, as
   return { status: file.operationStatus || 'PROCESSING', private: true };
 });
 
+async function deleteStoredIdentityFiles(fileIds) {
+  const ids = [...new Set((fileIds || []).filter(Boolean))];
+  if (!ids.length) return;
+  const getDescriptors = auth.elevate(files.getFileDescriptors);
+  const result = await getDescriptors(ids);
+  const existingIds = new Set((result.files || []).map(file => file._id));
+  const remainingIds = ids.filter(fileId => existingIds.has(fileId));
+  if (remainingIds.length) {
+    const deleteFiles = auth.elevate(files.bulkDeleteFiles);
+    await deleteFiles(remainingIds, { permanent: true });
+  }
+}
+
 export const saveGuestIdentity = webMethod(Permissions.SiteMember, async (guestId, data) => {
   const user = await requireAdmin();
   const id = boundedText(guestId, 'Guest', 100);
@@ -1024,10 +1037,7 @@ export const saveGuestIdentity = webMethod(Permissions.SiteMember, async (guestI
   const previousFileIds = found.items[0] ? [...new Set([found.items[0].frontFileId, found.items[0].backFileId].filter(Boolean))] : [];
   const saved = found.items[0] ? await wixData.update(C.identity, record, WRITE) : await wixData.insert(C.identity, record, WRITE);
   const replacedFileIds = previousFileIds.filter(fileId => !fileIds.includes(fileId));
-  if (replacedFileIds.length) {
-    const deleteFiles = auth.elevate(files.bulkDeleteFiles);
-    await deleteFiles(replacedFileIds, { permanent: true });
-  }
+  if (replacedFileIds.length) await deleteStoredIdentityFiles(replacedFileIds);
   await audit(user, 'IDENTITY_RECORD_UPDATED', id, { frontPhotoPresent: !!record.frontFileId, backPhotoPresent: !!record.backFileId, aadhaarPresent: !!aadhaarNumber });
   return { guestId: id, saved: !!saved._id };
 });
@@ -1038,10 +1048,7 @@ export const deleteGuestIdentity = webMethod(Permissions.SiteMember, async guest
   const found = await wixData.query(C.identity).eq('guestId', id).limit(1).find(READ);
   if (found.items[0]) {
     const fileIds = [...new Set([found.items[0].frontFileId, found.items[0].backFileId].filter(Boolean))];
-    if (fileIds.length) {
-      const deleteFiles = auth.elevate(files.bulkDeleteFiles);
-      await deleteFiles(fileIds, { permanent: true });
-    }
+    await deleteStoredIdentityFiles(fileIds);
     await wixData.remove(C.identity, found.items[0]._id, WRITE);
   }
   await audit(user, 'IDENTITY_RECORD_DELETED', id, {});
