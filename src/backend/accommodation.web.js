@@ -352,10 +352,12 @@ export const listBookings = webMethod(Permissions.SiteMember, async (filters = {
   await expireHolds();
   const start = filters.startDate ? parseDate(filters.startDate, 'Start date') : new Date(0);
   const end = filters.endDate ? new Date(parseDate(filters.endDate, 'End date').getTime() + DAY_MS) : new Date('9999-12-31T00:00:00.000Z');
-  let query = wixData.query(C.bookings).ge('startDate', start).lt('startDate', end).descending('startDate');
-  if (filters.status) query = query.eq('status', boundedText(filters.status, 'Status', 30));
-  const result = await query.limit(1000).find(READ);
-  return result.items.map(booking => {
+  const bookings = await all(C.bookings, q => {
+    let query = q.ge('startDate', start).lt('startDate', end).descending('startDate');
+    if (filters.status) query = query.eq('status', boundedText(filters.status, 'Status', 30));
+    return query;
+  });
+  return bookings.map(booking => {
     const bookingView = { ...booking, guestIdentity: undefined };
     delete bookingView.phone;
     delete bookingView.patientId;
