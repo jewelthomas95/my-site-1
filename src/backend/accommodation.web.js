@@ -660,6 +660,13 @@ async function saveCheckInAction(bookingId, payload) {
   const user = await requireCheckInStaff();
   const booking = await getBooking(boundedText(bookingId, 'Booking', 100));
   if (!['CONFIRMED', 'CHECKED_IN'].includes(booking.status)) fail('Only confirmed bookings can be checked in.');
+  if (booking.status === 'CONFIRMED') {
+    const today = todayKolkata();
+    const startDate = dateKey(new Date(booking.startDate));
+    const endDate = dateKey(new Date(booking.endDate));
+    if (today < startDate) fail('A future booking cannot be checked in before its check-in date.');
+    if (startDate === endDate ? today !== startDate : today >= endDate) fail('The booked stay date range has ended; adjust the booking before checking in.');
+  }
   if (!payload || !Array.isArray(payload.guests) || payload.guests.length !== Number(booking.partySize)) fail('Guest list must match the booking party size.');
   const guestFieldSettings = await getSetting('guestFields', { fields: [] });
   const configuredFields = (guestFieldSettings.fields || []).filter(field => field.active !== false);
