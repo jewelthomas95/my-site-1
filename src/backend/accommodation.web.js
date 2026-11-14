@@ -110,9 +110,9 @@ async function requireHousekeepingStaff() {
   return user;
 }
 
-async function all(collection, build = q => q) {
+async function all(collection, build = q => q, options = READ) {
   const query = build(wixData.query(collection)).limit(1000);
-  let result = await query.find(READ);
+  let result = await query.find(options);
   const items = [...result.items];
   while (result.hasNext()) {
     result = await result.next();
@@ -846,9 +846,36 @@ export const saveResource = webMethod(Permissions.SiteMember, async resourceInpu
     updatedAt: new Date(), updatedBy: user.id
   };
   if (!Number.isInteger(resource.capacity) || resource.capacity < 1) fail('Capacity must be a positive whole number.');
-  const saved = resourceInput._id
-    ? await wixData.update(C.resources, { ...resource, _id: boundedText(resourceInput._id, 'Resource ID', 100) }, WRITE)
-    : await wixData.insert(C.resources, { ...resource, createdAt: new Date(), createdBy: user.id }, WRITE);
+  const resourceId = resourceInput._id ? boundedText(resourceInput._id, 'Resource ID', 100) : '';
+  let saved;
+  if (resourceId) {
+    const existing = await wixData.get(C.resources, resourceId, { ...READ, consistentRead: true });
+    if (!existing) fail('Resource was not found.', 'NOT_FOUND');
+    const bookings = await all(C.bookings, q => q.eq('resourceId', resourceId), { ...READ, consistentRead: true });
+    if (existing.kind !== resource.kind && bookings.length) {
+      fail('The resource type cannot change after bookings exist. Add a new resource and archive this one.');
+    }
+    if (resource.capacity < Number(existing.capacity || 1)) {
+      const now = Date.now();
+      const activeBookings = new Map(bookings.filter(booking =>
+        ['CONFIRMED', 'CHECKED_IN'].includes(booking.status)
+        || (booking.status === 'HOLD' && new Date(booking.holdExpiresAt).getTime() > now)
+      ).map(booking => [booking._id, booking]));
+      if (existing.kind !== 'dorm') {
+        const overCapacity = [...activeBookings.values()].some(booking => Number(booking.partySize || 1) > resource.capacity);
+        if (overCapacity) fail('Room capacity cannot be reduced below the guest count of an active booking.');
+      } else {
+        const locks = await all(C.locks, q => q.eq('resourceId', resourceId), { ...READ, consistentRead: true });
+        const overCapacity = locks.some(lock => activeBookings.has(lock.bookingId)
+          && Number(lock.bedNumber) > resource.capacity
+          && (!lock.holdExpiresAt || new Date(lock.holdExpiresAt).getTime() > now));
+        if (overCapacity) fail('Dormitory capacity cannot be reduced while higher-numbered beds are reserved.');
+      }
+    }
+    saved = await wixData.update(C.resources, { ...existing, ...resource, _id: resourceId }, WRITE);
+  } else {
+    saved = await wixData.insert(C.resources, { ...resource, createdAt: new Date(), createdBy: user.id }, WRITE);
+  }
   await audit(user, resourceInput._id ? 'RESOURCE_UPDATED' : 'RESOURCE_ADDED', saved._id, { name: saved.name, active: saved.active });
   return { id: saved._id, name: saved.name, active: saved.active };
 });
