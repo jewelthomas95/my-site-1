@@ -8,7 +8,6 @@ const C = {
   resources: 'Resources', bookings: 'Bookings', locks: 'BookingLocks', guests: 'Guests',
   identity: 'GuestIdentity', payments: 'Payments', cashbook: 'Cashbook', budgets: 'Budgets', settings: 'FacilitySettings', audit: 'AuditLog'
 };
-const STAFF_ROLES = new Set(['Accommodation Staff', 'Accommodation Administrator', 'Admin', 'Administrator', 'Accountant', 'Caretaker', 'Cleaner']);
 const ADMIN_ROLES = new Set(['Accommodation Administrator', 'Administrator', 'Admin']);
 const ACCOUNTANT_ROLES = new Set(['Accountant']);
 const CARETAKER_ROLES = new Set(['Caretaker']);
@@ -68,7 +67,7 @@ async function viewer() {
       : [...ACCOUNTANT_ROLES].some(name => names.has(name)) ? 'accountant'
         : [...CARETAKER_ROLES].some(name => names.has(name)) ? 'caretaker'
           : [...CLEANER_ROLES].some(name => names.has(name)) ? 'cleaner'
-            : [...STAFF_ROLES].some(name => names.has(name)) ? 'staff' : null;
+            : null;
     return { id: member._id, role };
   } catch (_) {
     return null;
@@ -89,25 +88,25 @@ async function requireAdmin() {
 
 async function requireOperationalStaff() {
   const user = await requireStaff();
-  if (!['admin', 'accountant', 'caretaker', 'staff'].includes(user.role)) fail('Booking access is not available for this staff role.', 'FORBIDDEN');
+  if (!['admin', 'accountant', 'caretaker'].includes(user.role)) fail('Booking access is not available for this staff role.', 'FORBIDDEN');
   return user;
 }
 
 async function requirePaymentStaff() {
   const user = await requireStaff();
-  if (!['admin', 'accountant', 'caretaker', 'staff'].includes(user.role)) fail('Payment access is not available for this staff role.', 'FORBIDDEN');
+  if (!['admin', 'accountant', 'caretaker'].includes(user.role)) fail('Payment access is not available for this staff role.', 'FORBIDDEN');
   return user;
 }
 
 async function requireFinanceStaff() {
   const user = await requireStaff();
-  if (!['admin', 'accountant', 'staff'].includes(user.role)) fail('Accounting access is restricted to the Administrator and Accountant.', 'FORBIDDEN');
+  if (!['admin', 'accountant'].includes(user.role)) fail('Accounting access is restricted to the Administrator and Accountant.', 'FORBIDDEN');
   return user;
 }
 
 async function requireHousekeepingStaff() {
   const user = await requireStaff();
-  if (!['admin', 'caretaker', 'cleaner', 'staff'].includes(user.role)) fail('Housekeeping access is not available for this staff role.', 'FORBIDDEN');
+  if (!['admin', 'caretaker', 'cleaner'].includes(user.role)) fail('Housekeeping access is not available for this staff role.', 'FORBIDDEN');
   return user;
 }
 
