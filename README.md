@@ -2,11 +2,11 @@
 
 This repository contains the Wix Velo code for the church accommodation app on **My Site 1**.
 
-## Why the published Home page is still blank
+## Published-site status
 
-Wix Git Integration tracks this repository's default branch, `main`. The app is currently on the open draft pull request [#1](https://github.com/jewelthomas95/my-site-1/pull/1), so the published site still uses the original Home page code. The Home page bridge is in `src/pages/Home.mwzy1.js`; the page also needs the accommodation HTML in the `havenApp` component.
+The published Home page currently renders the accommodation booking interface. The Wix site still shows starter-template branding and contact details in its header and footer, and the phone layout still needs review. The current code changes are on the open draft pull request [#1](https://github.com/jewelthomas95/my-site-1/pull/1); the public page's visible app does not prove that it is running this branch.
 
-The app branch includes a responsive booking and staff interface, including a month-by-month stay calendar with space filters and staff rescheduling for active stays, in `accommodation-setup/page-templates/accommodation-shell.html`. The component's contents are stored in Wix Editor rather than this repo, so keep the Wix component in sync by copying the full shell file into the `havenApp` HTML component code editor. The component should span the page content width and have enough height to show the app without an inner scroll bar.
+The Home-page bridge is in `src/pages/Home.mwzy1.js`. Its HTML Component is `havenApp`; the full component contents are in `accommodation-setup/page-templates/accommodation-shell.html` and must be kept in sync in Wix Editor. The branch includes the booking and staff interface, month-by-month stay calendar with space filters, and rescheduling for active stays. The component should span the page content width and have enough height to show the app without an inner scroll bar.
 
 ## Current setup
 
