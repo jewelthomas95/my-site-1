@@ -790,8 +790,22 @@ export const getFinancialReport = webMethod(Permissions.SiteMember, async (start
   };
 });
 
+export const listBudgets = webMethod(Permissions.SiteMember, async () => {
+  await requireFinanceStaff();
+  const budgets = await all(C.budgets, q => q.descending('periodStart'));
+  return budgets.map(item => ({
+    _id: item._id,
+    category: item.category || '',
+    amount: Number(item.amount || 0),
+    periodStart: dateKey(new Date(item.periodStart)),
+    periodEnd: dateKey(new Date(item.periodEnd)),
+    notes: item.notes || ''
+  }));
+});
+
 export const saveBudget = webMethod(Permissions.SiteMember, async budget => {
   const user = await requireFinanceStaff();
+  if (!budget || typeof budget !== 'object') fail('Budget details are required.');
   const start = parseDate(budget?.periodStart, 'Budget start date');
   const end = parseDate(budget?.periodEnd, 'Budget end date');
   if (end < start) fail('Budget end date cannot be before its start date.');
@@ -802,9 +816,15 @@ export const saveBudget = webMethod(Permissions.SiteMember, async budget => {
     notes: boundedText(budget.notes, 'Budget notes', 300, false),
     updatedAt: new Date(), updatedBy: user.id
   };
-  const saved = budget._id
-    ? await wixData.update(C.budgets, { ...item, _id: boundedText(budget._id, 'Budget ID', 100) }, WRITE)
-    : await wixData.insert(C.budgets, { ...item, createdAt: new Date(), createdBy: user.id }, WRITE);
+  let saved;
+  if (budget._id) {
+    const id = boundedText(budget._id, 'Budget ID', 100);
+    const existing = await wixData.get(C.budgets, id, READ);
+    if (!existing) fail('Budget entry was not found.', 'NOT_FOUND');
+    saved = await wixData.update(C.budgets, { ...existing, ...item, _id: id }, WRITE);
+  } else {
+    saved = await wixData.insert(C.budgets, { ...item, createdAt: new Date(), createdBy: user.id }, WRITE);
+  }
   await audit(user, budget._id ? 'BUDGET_UPDATED' : 'BUDGET_ADDED', saved._id, { category: saved.category, amount: saved.amount });
   return { id: saved._id, category: saved.category, amount: saved.amount, periodStart: dateKey(saved.periodStart), periodEnd: dateKey(saved.periodEnd) };
 });
