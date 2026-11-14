@@ -15,7 +15,7 @@ Before live use, install and sync the repository dependencies, create and assign
 
 ## Wix site setup
 
-The selected site is **My Site 1** (`ceec11db-0fdb-4bbb-93bf-8a37080b4d24`), a Wix Editor site with Velo enabled. Wix reports it as published at [https://jewelthomas95.wixsite.com/bmtc](https://jewelthomas95.wixsite.com/my-site-1). The Wix CMS collections have been created there with administrator-only item permissions. Initial room, dormitory, and common-kitchen records and the default facility settings have also been added. Wix Members Area was installed to enable member sign-in.
+The selected site is **My Site 1** (`ceec11db-0fdb-4bbb-93bf-8a37080b4d24`), a Wix Editor site with Velo enabled. Wix reports it as published at [https://jewelthomas95.wixsite.com/bmtc](https://jewelthomas95.wixsite.com/bmtc). The Wix CMS collections have been created there with administrator-only item permissions. Initial room, dormitory, and common-kitchen records and the default facility settings have also been added. Wix Members Area was installed to enable member sign-in.
 
 The site's repository is `https://github.com/jewelthomas95/my-site-1.git`. This branch adds the Wix Velo backend and a single-component Home interface. The app shell file must also be pasted into the Wix HTML Component in the Editor so its design is stored in the site UI.
 
