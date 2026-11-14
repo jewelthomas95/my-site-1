@@ -11,7 +11,7 @@ import {
   getStaffBootstrap, listBookings, getBookingDetails, createStaffBooking,
   getHousekeepingTasks, setHousekeepingStatus, getAuditLog,
   confirmHold, cancelHold, getBillingDetails, getReceipt, recordPayment, saveCheckIn,
-  checkOut, addCashbookEntry, getFinancialReport, saveBudget,
+  checkOut, addCashbookEntry, getFinancialReport, listBudgets, saveBudget,
   saveResource, saveFacilitySettings, getGuestIdentity,
   generateGuestDocumentUploadUrl, getGuestDocumentUploadStatus, saveGuestIdentity, deleteGuestIdentity
 } from 'backend/accommodation.web';
@@ -36,6 +36,7 @@ const methods = {
   checkOut,
   addCashbookEntry,
   getFinancialReport,
+  listBudgets,
   saveBudget,
   saveResource,
   saveFacilitySettings,
