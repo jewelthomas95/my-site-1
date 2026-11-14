@@ -327,6 +327,15 @@ export const getPublicResources = webMethod(Permissions.Anyone, async () => {
   }));
 });
 
+export const getPublicSettings = webMethod(Permissions.Anyone, async () => {
+  const settings = await getSetting('general', { facilityName: 'Church Accommodation Facility', checkIn: '14:00', checkOut: '12:00' });
+  return {
+    facilityName: boundedText(settings.facilityName || 'Church Accommodation Facility', 'Facility name', 120),
+    checkIn: /^([01]\d|2[0-3]):[0-5]\d$/.test(settings.checkIn || '') ? settings.checkIn : '14:00',
+    checkOut: /^([01]\d|2[0-3]):[0-5]\d$/.test(settings.checkOut || '') ? settings.checkOut : '12:00'
+  };
+});
+
 export const getPublicAvailability = webMethod(Permissions.Anyone, async (startDate, endDate) => {
   await requireInventoryReady();
   await expireHolds();
