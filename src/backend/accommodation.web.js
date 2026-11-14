@@ -286,7 +286,8 @@ function billLines(booking) {
     const rate = Number(item.rate || 0);
     const unitText = { 'per-day': 'per day', 'per-person-day': 'per person per day', 'per-stay': 'per stay', 'per-person-stay': 'per person per stay' }[item.unit] || 'per use';
     const countText = `${quantity} ${item.unit?.includes('day') ? (quantity === 1 ? 'day' : 'days') : (quantity === 1 ? 'stay' : 'stays')}`;
-    const basis = people > 1 ? `${countText} × ${people} people` : countText;
+    const perPerson = ['per-person-day', 'per-person-stay'].includes(item.unit);
+    const basis = perPerson ? `${countText} × ${people} ${people === 1 ? 'person' : 'people'}` : countText;
     lines.push({ description: `${item.name || 'Additional facility'} · ${basis} @ ₹${rate.toFixed(2)} ${unitText}`, quantity: quantity * people, rate, amount: rate * quantity * people });
   }
   return lines.map(line => ({ ...line, amount: Math.round(line.amount * 100) / 100 }));
