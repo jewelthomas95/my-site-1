@@ -6,6 +6,10 @@ let currentResource;
 const show = message => { $w('#settingsMessage').text = message; };
 
 $w.onReady(async () => {
+  $w('#resourceKind').options = [
+    { label: 'Private room', value: 'private' },
+    { label: 'Dormitory', value: 'dorm' }
+  ];
   try {
     model = await getStaffBootstrap();
     $w('#facilityName').value = model.settings.facilityName || '';
