@@ -492,6 +492,7 @@ export const checkOut = webMethod(Permissions.SiteMember, async bookingId => {
 
   const alreadyCheckedOut = booking.status === 'CHECKED_OUT';
   const today = parseDate(todayKolkata(), 'Today');
+  if (!alreadyCheckedOut && today < new Date(booking.startDate)) fail('A future booking cannot be checked out before its check-in date.');
   let releasedFutureSlots = 0;
   if (!alreadyCheckedOut) {
     booking.status = 'CHECKED_OUT';
