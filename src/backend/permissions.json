@@ -125,9 +125,15 @@
         }
       },
       "rescheduleBooking": {
-        "siteOwner": { "invoke": true },
-        "siteMember": { "invoke": true },
-        "anonymous": { "invoke": false }
+        "siteOwner": {
+          "invoke": true
+        },
+        "siteMember": {
+          "invoke": true
+        },
+        "anonymous": {
+          "invoke": false
+        }
       },
       "getBillingDetails": {
         "siteOwner": {
@@ -336,6 +342,17 @@
         },
         "anonymous": {
           "invoke": true
+        }
+      },
+      "deleteResource": {
+        "siteOwner": {
+          "invoke": true
+        },
+        "siteMember": {
+          "invoke": true
+        },
+        "anonymous": {
+          "invoke": false
         }
       }
     }
