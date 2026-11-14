@@ -112,9 +112,14 @@ async function requireHousekeepingStaff() {
 }
 
 async function all(collection, build = q => q) {
-  let query = build(wixData.query(collection));
-  const result = await query.limit(1000).find(READ);
-  return result.items;
+  const query = build(wixData.query(collection)).limit(1000);
+  let result = await query.find(READ);
+  const items = [...result.items];
+  while (result.hasNext()) {
+    result = await result.next();
+    items.push(...result.items);
+  }
+  return items;
 }
 
 async function getSetting(settingKey, fallback) {
