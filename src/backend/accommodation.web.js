@@ -461,6 +461,7 @@ async function confirmHoldAction(bookingId, requiredPayment, receivedAmount, met
   const threshold = validAmount(requiredPayment, 'Confirmation payment', true);
   const amount = validAmount(receivedAmount, 'Payment received', true);
   if (amount < threshold) fail('Payment received must meet the required confirmation amount.');
+  if (amount === 0 && billTotal(booking) > 0) fail('Record a payment greater than zero to confirm a booking with a balance due.');
   if (amount > billTotal(booking)) fail('Payment cannot exceed the current bill.');
   if (amount > 0 && !['Cash', 'Bank transfer'].includes(method)) fail('Choose Cash or Bank transfer.');
   const originalExpiry = booking.holdExpiresAt;
