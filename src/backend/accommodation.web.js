@@ -386,15 +386,27 @@ export const createPublicHold = webMethod(Permissions.Anyone, async input => {
 export const getStaffBootstrap = webMethod(Permissions.SiteMember, async () => {
   const user = await requireStaff();
   await expireHolds();
-  const [resources, settings, commonKitchen, chargeableFacilities, guestFields] = await Promise.all([
-    all(C.resources, q => q.ascending('sortOrder')),
-    getSetting('general', { facilityName: 'Church Accommodation Facility', checkIn: '14:00', checkOut: '12:00', timezone: 'Asia/Kolkata' }),
+  const general = await getSetting('general', { facilityName: 'Church Accommodation Facility', checkIn: '14:00', checkOut: '12:00', timezone: 'Asia/Kolkata' });
+  const safeSettings = { facilityName: general.facilityName || 'Church Accommodation Facility' };
+  if (user.role === 'cleaner') return { role: user.role, settings: safeSettings, resources: [] };
+
+  const resources = await all(C.resources, q => q.ascending('sortOrder'));
+  if (user.role === 'accountant') {
+    return {
+      role: user.role,
+      settings: safeSettings,
+      resources: resources.map(({ _id, name, kind, active, capacity, dailyRate }) => ({ _id, name, kind, active, capacity, dailyRate }))
+    };
+  }
+
+  const [commonKitchen, chargeableFacilities, guestFields] = await Promise.all([
     getSetting('commonKitchen', { rate: 100, eligibleResourceIds: [] }),
     getSetting('chargeableFacilities', { items: [] }),
     getSetting('guestFields', { fields: [] })
   ]);
   return {
-    role: user.role, settings: { ...settings, commonKitchen, chargeableFacilities, guestFields },
+    role: user.role,
+    settings: { ...general, commonKitchen, chargeableFacilities, guestFields },
     resources: resources.map(({ _id, name, kind, active, capacity, bedsDescription, bathroom, kitchen, amenities, dailyRate }) => ({ _id, name, kind, active, capacity, bedsDescription, bathroom, kitchen, amenities, dailyRate }))
   };
 });
