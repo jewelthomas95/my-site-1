@@ -720,6 +720,9 @@ async function saveCheckInAction(bookingId, payload) {
     if (facility.unit.includes('day') && (!Number.isInteger(quantity) || quantity > stayDateKeys.size)) fail('Per-day facility quantity must be whole days within the stay.');
     return { facilityId: facility.id, name: facility.name, unit: facility.unit, rate: Number(facility.rate), quantity };
   });
+  const revisedBill = billTotal(booking);
+  const paidSoFar = await paidTotal(booking._id);
+  if (paidSoFar > revisedBill) fail('These charge changes would make recorded payments exceed the revised bill. Review the charges before saving.');
   const existing = await all(C.guests, q => q.eq('bookingId', booking._id));
   for (let index = 0; index < guests.length; index += 1) {
     if (existing[index]) await wixData.update(C.guests, { ...guests[index], _id: existing[index]._id }, WRITE);
