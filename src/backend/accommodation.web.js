@@ -660,19 +660,18 @@ async function rescheduleBookingAction(bookingId, startValue, endValue) {
   const oldStartDate = dateKey(new Date(booking.startDate));
   const oldEndDate = dateKey(new Date(booking.endDate));
   const stayKeys = new Set(days.map(dateKey));
-  booking.startDate = start;
-  booking.endDate = end;
-  booking.kitchenDays = (booking.kitchenDays || []).filter(day => stayKeys.has(dateKey(parseDate(day, 'Kitchen-use date'))));
-  const total = billTotal(booking);
-  const paid = await paidTotal(booking._id);
-  if (total < paid) {
-    await Promise.all(inserted.map(id => wixData.remove(C.locks, id, WRITE).catch(() => undefined)));
-    fail('The new bill would be lower than the amount already received. Adjust the stay or review its payments first.');
-  }
-  booking.balanceDue = Math.max(0, Math.round((total - paid) * 100) / 100);
-  booking.updatedAt = new Date();
-  booking.updatedBy = user.id;
+  let total;
+  let paid;
   try {
+    booking.startDate = start;
+    booking.endDate = end;
+    booking.kitchenDays = (booking.kitchenDays || []).filter(day => stayKeys.has(dateKey(parseDate(day, 'Kitchen-use date'))));
+    total = billTotal(booking);
+    paid = await paidTotal(booking._id);
+    if (total < paid) fail('The new bill would be lower than the amount already received. Adjust the stay or review its payments first.');
+    booking.balanceDue = Math.max(0, Math.round((total - paid) * 100) / 100);
+    booking.updatedAt = new Date();
+    booking.updatedBy = user.id;
     await wixData.update(C.bookings, booking, WRITE);
   } catch (error) {
     await Promise.all(inserted.map(id => wixData.remove(C.locks, id, WRITE).catch(() => undefined)));
