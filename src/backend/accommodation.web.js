@@ -139,7 +139,7 @@ async function audit(user, action, recordId, details = {}) {
 }
 
 async function getBooking(bookingId) {
-  const booking = await wixData.get(C.bookings, bookingId, READ);
+  const booking = await wixData.get(C.bookings, bookingId, { ...READ, consistentRead: true });
   if (!booking) fail('Booking was not found.', 'NOT_FOUND');
   return booking;
 }
@@ -152,6 +152,43 @@ async function getBookingByReference(reference) {
     return result.items[0];
   }
   return getBooking(value);
+}
+
+async function withBookingOperation(bookingId, action) {
+  const id = boundedText(bookingId, 'Booking', 100);
+  const slotKey = `__operation__|${id}`;
+  const operationBookingId = `__operation__:${id}`;
+  const now = Date.now();
+  const acquire = () => wixData.insert(C.locks, {
+    slotKey, bookingId: operationBookingId, resourceId: '', bedNumber: -1,
+    stayDate: new Date(), holdExpiresAt: new Date(now + 5 * 60 * 1000)
+  }, WRITE);
+
+  let lock;
+  try {
+    lock = await acquire();
+  } catch (insertError) {
+    const existing = await wixData.query(C.locks).eq('slotKey', slotKey).limit(1).find({ ...READ, consistentRead: true });
+    const current = existing.items[0];
+    if (!current) throw insertError;
+    if (!current.holdExpiresAt || new Date(current.holdExpiresAt).getTime() > Date.now()) {
+      fail('Another staff action is updating this booking. Please retry in a moment.', 'OPERATION_IN_PROGRESS');
+    }
+    await wixData.remove(C.locks, current._id, WRITE);
+    try {
+      lock = await acquire();
+    } catch (retryError) {
+      const winner = await wixData.query(C.locks).eq('slotKey', slotKey).limit(1).find({ ...READ, consistentRead: true });
+      if (winner.items[0]) fail('Another staff action is updating this booking. Please retry in a moment.', 'OPERATION_IN_PROGRESS');
+      throw retryError;
+    }
+  }
+
+  try {
+    return await action();
+  } finally {
+    await wixData.remove(C.locks, lock._id, WRITE).catch(() => undefined);
+  }
 }
 
 async function removeLocks(bookingId) {
@@ -188,7 +225,7 @@ async function expireHolds() {
 async function activeLocks(start, end) {
   const locks = await all(C.locks, q => q.ge('stayDate', start).lt('stayDate', end));
   const now = Date.now();
-  return locks.filter(lock => !lock.holdExpiresAt || new Date(lock.holdExpiresAt).getTime() > now);
+  return locks.filter(lock => Number(lock.bedNumber) >= 0 && (!lock.holdExpiresAt || new Date(lock.holdExpiresAt).getTime() > now));
 }
 
 function billTotal(booking) {
@@ -390,7 +427,8 @@ export const getBookingDetails = webMethod(Permissions.SiteMember, async booking
   };
 });
 
-export const confirmHold = webMethod(Permissions.SiteMember, async (bookingId, requiredPayment, receivedAmount, method, note = '') => {
+async function confirmHoldAction(bookingId, requiredPayment, receivedAmount, method, note = '') {
+
   const user = await requirePaymentStaff();
   const booking = await getBooking(boundedText(bookingId, 'Booking', 100));
   if (booking.status !== 'HOLD' || new Date(booking.holdExpiresAt).getTime() <= Date.now()) fail('This booking hold is no longer active.', 'EXPIRED');
@@ -425,9 +463,13 @@ export const confirmHold = webMethod(Permissions.SiteMember, async (bookingId, r
   }
   await audit(user, 'BOOKING_CONFIRMED', booking._id, { paymentId: payment._id, amount, method });
   return { bookingCode: booking.bookingCode, status: booking.status, billTotal: billTotal(booking), paid: amount, balanceDue: Math.max(0, billTotal(booking) - amount), receiptCode: payment.receiptCode };
-});
+}
 
-export const cancelHold = webMethod(Permissions.SiteMember, async bookingId => {
+export const confirmHold = webMethod(Permissions.SiteMember, async (bookingId, requiredPayment, receivedAmount, method, note = '') =>
+  withBookingOperation(bookingId, () => confirmHoldAction(bookingId, requiredPayment, receivedAmount, method, note)));
+
+async function cancelHoldActionbookingId {
+
   const user = await requireOperationalStaff();
   const booking = await getBooking(boundedText(bookingId, 'Booking', 100));
   const alreadyCancelled = booking.status === 'CANCELLED';
@@ -446,7 +488,10 @@ export const cancelHold = webMethod(Permissions.SiteMember, async bookingId => {
   await Promise.all(locks.map(lock => wixData.remove(C.locks, lock._id, WRITE)));
   if (!alreadyCancelled) await audit(user, 'BOOKING_HOLD_CANCELLED', booking._id, { bookingCode: booking.bookingCode });
   return { bookingCode: booking.bookingCode, status: 'CANCELLED', releasedSlots: locks.length };
-});
+}
+
+export const cancelHold = webMethod(Permissions.SiteMember, async bookingId =>
+  withBookingOperation(bookingId, () => cancelHoldAction(bookingId)));
 
 export const createStaffBooking = webMethod(Permissions.SiteMember, async input => {
   const user = await requireOperationalStaff();
@@ -515,7 +560,8 @@ export const getReceipt = webMethod(Permissions.SiteMember, async receiptCode =>
   return { receiptCode: payment.receiptCode, amount: payment.amount, method: payment.method, receivedAt: payment.receivedAt, note: payment.note || '', bookingCode: booking.bookingCode, guestName: booking.leadName, facilityName: (await getSetting('general', {})).facilityName || 'Church Accommodation Facility' };
 });
 
-export const checkOut = webMethod(Permissions.SiteMember, async bookingId => {
+async function checkOutActionbookingId {
+
   const user = await requireOperationalStaff();
   const booking = await getBooking(boundedText(bookingId, 'Booking', 100));
   if (!['CONFIRMED', 'CHECKED_IN', 'CHECKED_OUT'].includes(booking.status)) fail('Only confirmed or checked-in stays can be checked out.');
@@ -546,8 +592,10 @@ export const checkOut = webMethod(Permissions.SiteMember, async bookingId => {
     await audit(user, 'GUEST_CHECKED_OUT', booking._id, { balanceDue: booking.balanceDue, releasedFutureSlots });
   }
   return { bookingCode: booking.bookingCode, status: booking.status, billTotal: billTotal(booking), balanceDue: booking.balanceDue, releasedFutureSlots };
-});
+}
 
+export const checkOut = webMethod(Permissions.SiteMember, async bookingId =>
+  withBookingOperation(bookingId, () => checkOutAction(bookingId)));
 
 export const getHousekeepingTasks = webMethod(Permissions.SiteMember, async () => {
   await requireHousekeepingStaff();
@@ -576,7 +624,8 @@ export const setHousekeepingStatus = webMethod(Permissions.SiteMember, async (bo
   return { bookingId: booking._id, status: nextStatus };
 });
 
-export const saveCheckIn = webMethod(Permissions.SiteMember, async (bookingId, payload) => {
+async function saveCheckInAction(bookingId, payload) {
+
   const user = await requireOperationalStaff();
   const booking = await getBooking(boundedText(bookingId, 'Booking', 100));
   if (!['CONFIRMED', 'CHECKED_IN'].includes(booking.status)) fail('Only confirmed bookings can be checked in.');
@@ -643,14 +692,18 @@ export const saveCheckIn = webMethod(Permissions.SiteMember, async (bookingId, p
   await wixData.update(C.bookings, booking, WRITE);
   await audit(user, 'GUEST_CHECKED_IN', booking._id, { guestCount: guests.length });
   return { bookingCode: booking.bookingCode, status: booking.status, billTotal: billTotal(booking), balanceDue: booking.balanceDue };
-});
+}
+
+export const saveCheckIn = webMethod(Permissions.SiteMember, async (bookingId, payload) =>
+  withBookingOperation(bookingId, () => saveCheckInAction(bookingId, payload)));
 
 async function paidTotal(bookingId) {
   const payments = await all(C.payments, q => q.eq('bookingId', bookingId));
   return payments.reduce((sum, item) => sum + Number(item.amount || 0), 0);
 }
 
-export const recordPayment = webMethod(Permissions.SiteMember, async (bookingId, amountValue, method, note = '') => {
+async function recordPaymentAction(bookingId, amountValue, method, note = '') {
+
   const user = await requirePaymentStaff();
   const booking = await getBooking(boundedText(bookingId, 'Booking', 100));
   if (!['CONFIRMED', 'CHECKED_IN', 'CHECKED_OUT'].includes(booking.status)) fail('Payments can only be recorded for confirmed stays.');
@@ -677,7 +730,10 @@ export const recordPayment = webMethod(Permissions.SiteMember, async (bookingId,
   }
   await audit(user, 'PAYMENT_RECORDED', booking._id, { paymentId: payment._id, amount, method });
   return { receiptCode: payment.receiptCode, amount, balanceDue: booking.balanceDue };
-});
+}
+
+export const recordPayment = webMethod(Permissions.SiteMember, async (bookingId, amountValue, method, note = '') =>
+  withBookingOperation(bookingId, () => recordPaymentAction(bookingId, amountValue, method, note)));
 
 export const addCashbookEntry = webMethod(Permissions.SiteMember, async entry => {
   const user = await requireFinanceStaff();
