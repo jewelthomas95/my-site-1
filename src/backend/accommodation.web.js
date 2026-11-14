@@ -455,26 +455,27 @@ export const getBookingDetails = webMethod(Permissions.SiteMember, async booking
 });
 
 async function confirmHoldAction(bookingId, requiredPayment, receivedAmount, method, note = '') {
-
   const user = await requirePaymentStaff();
   const booking = await getBooking(boundedText(bookingId, 'Booking', 100));
   if (booking.status !== 'HOLD' || new Date(booking.holdExpiresAt).getTime() <= Date.now()) fail('This booking hold is no longer active.', 'EXPIRED');
-  const threshold = validAmount(requiredPayment, 'Confirmation payment');
-  const amount = validAmount(receivedAmount, 'Payment received');
+  const threshold = validAmount(requiredPayment, 'Confirmation payment', true);
+  const amount = validAmount(receivedAmount, 'Payment received', true);
   if (amount < threshold) fail('Payment received must meet the required confirmation amount.');
-  if (!['Cash', 'Bank transfer'].includes(method)) fail('Choose Cash or Bank transfer.');
   if (amount > billTotal(booking)) fail('Payment cannot exceed the current bill.');
+  if (amount > 0 && !['Cash', 'Bank transfer'].includes(method)) fail('Choose Cash or Bank transfer.');
   const originalExpiry = booking.holdExpiresAt;
-  const payment = await wixData.insert(C.payments, {
-    bookingId: booking._id, amount, method, receivedAt: new Date(), note: boundedText(note, 'Payment note', 200, false),
-    receiptCode: randomCode('RC'), recordedBy: user.id
-  }, WRITE);
-  let cashbookEntry;
+  let payment, cashbookEntry;
   try {
-    cashbookEntry = await wixData.insert(C.cashbook, {
-      entryDate: new Date(), entryType: 'RECEIPT', category: 'Accommodation', description: `${booking.resourceNameSnapshot} · ${booking.bookingCode}`,
-      amount, method, bookingId: booking._id, paymentId: payment._id, recordedBy: user.id
-    }, WRITE);
+    if (amount > 0) {
+      payment = await wixData.insert(C.payments, {
+        bookingId: booking._id, amount, method, receivedAt: new Date(), note: boundedText(note, 'Payment note', 200, false),
+        receiptCode: randomCode('RC'), recordedBy: user.id
+      }, WRITE);
+      cashbookEntry = await wixData.insert(C.cashbook, {
+        entryDate: new Date(), entryType: 'RECEIPT', category: 'Accommodation', description: `${booking.resourceNameSnapshot} · ${booking.bookingCode}`,
+        amount, method, bookingId: booking._id, paymentId: payment._id, recordedBy: user.id
+      }, WRITE);
+    }
     await makeLocksPermanent(booking._id);
     booking.requiredPayment = threshold;
     booking.status = 'CONFIRMED';
@@ -484,14 +485,13 @@ async function confirmHoldAction(bookingId, requiredPayment, receivedAmount, met
     await wixData.update(C.bookings, booking, WRITE);
   } catch (error) {
     if (cashbookEntry?._id) await wixData.remove(C.cashbook, cashbookEntry._id, WRITE).catch(() => undefined);
-    await wixData.remove(C.payments, payment._id, WRITE).catch(() => undefined);
+    if (payment?._id) await wixData.remove(C.payments, payment._id, WRITE).catch(() => undefined);
     await setLockExpiry(booking._id, originalExpiry).catch(() => undefined);
     throw error;
   }
-  await audit(user, 'BOOKING_CONFIRMED', booking._id, { paymentId: payment._id, amount, method });
-  return { bookingCode: booking.bookingCode, status: booking.status, billTotal: billTotal(booking), paid: amount, balanceDue: Math.max(0, billTotal(booking) - amount), receiptCode: payment.receiptCode };
+  await audit(user, 'BOOKING_CONFIRMED', booking._id, { paymentId: payment?._id || '', amount, method: amount > 0 ? method : 'No charge' });
+  return { bookingCode: booking.bookingCode, status: booking.status, billTotal: billTotal(booking), paid: amount, balanceDue: Math.max(0, billTotal(booking) - amount), receiptCode: payment?.receiptCode || '' };
 }
-
 export const confirmHold = webMethod(Permissions.SiteMember, async (bookingId, requiredPayment, receivedAmount, method, note = '') =>
   withBookingOperation(bookingId, () => confirmHoldAction(bookingId, requiredPayment, receivedAmount, method, note)));
 
