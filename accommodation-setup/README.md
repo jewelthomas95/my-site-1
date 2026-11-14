@@ -21,7 +21,7 @@ The site's repository is `https://github.com/jewelthomas95/my-site-1.git`. This 
 
 ## Create the Wix data collections
 
-Use the IDs and fields in [`schema.json`](schema.json) to create the CMS collections. Set all four collection permissions (read, insert, update, remove) to **Admin**. Public and staff operations go through backend web methods that validate the caller and use elevated data access only after those checks.
+The connected site's CMS collections already exist. Use the IDs and fields in [`schema.json`](schema.json) as the required field and permission reference when syncing the app; do not recreate existing collections. The live `Bookings` collection includes `cancelledAt` and `cancelledBy` for staff cancellation records. Keep all four collection permissions (read, insert, update, remove) set to **Admin**. Public and staff operations go through backend web methods that validate the caller and use elevated data access only after those checks.
 
 Create a **unique index** on `BookingLocks.slotKey`. The backend claims a room/bed for each stay date by inserting lock rows; the unique index prevents two simultaneous requests from claiming the same inventory slot. Keep the `BookingLocks` collection private.
 
