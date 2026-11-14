@@ -124,6 +124,11 @@
           "invoke": false
         }
       },
+      "rescheduleBooking": {
+        "siteOwner": { "invoke": true },
+        "siteMember": { "invoke": true },
+        "anonymous": { "invoke": false }
+      },
       "getBillingDetails": {
         "siteOwner": {
           "invoke": true
