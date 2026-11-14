@@ -30,6 +30,13 @@ function boundedText(value, field, max = 180, required = true) {
   return text;
 }
 
+function phoneText(value) {
+  const phone = boundedText(value, 'Phone number', 40);
+  const digits = phone.replace(/\D/g, '');
+  if (!/^[+()\d.\-\s]+$/.test(phone) || digits.length < 7 || digits.length > 15) fail('Enter a valid phone number with 7 to 15 digits.');
+  return phone;
+}
+
 function parseDate(value, field) {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) fail(`${field} must be a calendar date.`);
   const date = new Date(`${value}T00:00:00.000Z`);
@@ -361,7 +368,7 @@ export const createPublicHold = webMethod(Permissions.Anyone, async input => {
   if (!input || typeof input !== 'object') fail('Booking details are required.');
   const resourceId = boundedText(input.resourceId, 'Accommodation', 100);
   const leadName = boundedText(input.leadName, 'Lead guest name', 120);
-  const phone = boundedText(input.phone, 'Phone number', 40);
+  const phone = phoneText(input.phone);
   const partySize = Number(input.partySize);
   if (!Number.isInteger(partySize) || partySize < 1 || partySize > 20) fail('Guest count must be between 1 and 20.');
   const start = parseDate(input.startDate, 'Check-in');
@@ -541,7 +548,7 @@ export const createStaffBooking = webMethod(Permissions.SiteMember, async input 
   if (!input || typeof input !== 'object') fail('Booking details are required.');
   const resourceId = boundedText(input.resourceId, 'Accommodation', 100);
   const leadName = boundedText(input.leadName, 'Lead guest name', 120);
-  const phone = boundedText(input.phone, 'Phone number', 40);
+  const phone = phoneText(input.phone);
   const partySize = Number(input.partySize);
   if (!Number.isInteger(partySize) || partySize < 1 || partySize > 20) fail('Guest count must be between 1 and 20.');
   const start = parseDate(input.startDate, 'Check-in');
