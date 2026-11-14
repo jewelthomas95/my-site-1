@@ -901,6 +901,7 @@ export const saveResource = webMethod(Permissions.SiteMember, async resourceInpu
 export const saveFacilitySettings = webMethod(Permissions.SiteMember, async settingsInput => {
   const user = await requireAdmin();
   const settingKey = boundedText(settingsInput?.settingKey, 'Settings section', 80);
+  if (!['general', 'commonKitchen', 'chargeableFacilities', 'guestFields'].includes(settingKey)) fail('Choose a supported settings section.');
   let value = settingsInput?.value;
   if (!value || typeof value !== 'object' || Array.isArray(value)) fail('Settings must be an object.');
   if (settingKey === 'general') {
