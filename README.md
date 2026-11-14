@@ -6,7 +6,7 @@ This repository contains the Wix Velo code for the church accommodation app on *
 
 The published Home page currently renders the accommodation booking interface. The Wix site still shows starter-template branding and contact details in its header and footer, and the phone layout still needs review. The current code changes are on the open draft pull request [#1](https://github.com/jewelthomas95/my-site-1/pull/1); the public page's visible app does not prove that it is running this branch.
 
-The Home-page bridge is in `src/pages/Home.mwzy1.js`. Its HTML Component is `havenApp`; the full component contents are in `accommodation-setup/page-templates/accommodation-shell.html` and must be kept in sync in Wix Editor. The branch includes the booking and staff interface, month-by-month stay calendar with space filters, and rescheduling for active stays. The component should span the page content width and have enough height to show the app without an inner scroll bar.
+The Home-page bridge is in `src/pages/Home.mwzy1.js`. Its HTML Component is `havenApp`; the full component contents are in `accommodation-setup/page-templates/accommodation-shell.html` and must be kept in sync in Wix Editor. The branch includes the booking and staff interface, month-by-month stay calendar with space filters, and rescheduling for active stays. The component should span the page content width and have enough height to show the app without an inner scroll bar. The separate Wix routes for Book, Staff, Facility Settings, and Guest Identity now return visitors to Home, where those features are available inside the accommodation app. This avoids blank pages when the Wix site menu is used.
 
 ## Current setup
 
