@@ -25,7 +25,7 @@ The connected site's CMS collections already exist. Use the IDs and fields in [`
 
 The connected Wix site currently has an **ACTIVE unique index** named `unique-booking-slot` on `BookingLocks.slotKey`. The backend claims a room/bed for each stay date by inserting lock rows; the unique index prevents two simultaneous requests from claiming the same inventory slot. Keep the `BookingLocks` collection private. The same index also serializes changes to one booking at a time using a temporary operation marker (`bedNumber: -1`); availability calculations ignore these markers, and another request can reclaim one if it is older than five minutes.
 
-Create and assign Wix member roles titled `Administrator`, `Accountant`, `Caretaker`, and `Cleaner`. The Administrator can access all areas, the Accountant can access bookings and accounts, the Caretaker can manage bookings and cleaning tasks, and the Cleaner can access only the guest-free cleaning task list. Aadhaar records, facility settings, and the in-app audit log are administrator-only. Wix `Admin` members are also administrators.
+Create and assign Wix member roles titled `Administrator`, `Accountant`, `Caretaker`, and `Cleaner`. The Administrator can access all areas, the Accountant can access bookings and accounts, the Caretaker can manage bookings, check-in details and cleaning tasks, and the Cleaner can access only the guest-free cleaning task list. Patient IDs, guest addresses and custom check-in fields can be changed only by the Administrator and Caretaker. Aadhaar records, facility settings, and the in-app audit log are administrator-only. Wix `Admin` members are also administrators.
 
 ## Private identity documents
 
