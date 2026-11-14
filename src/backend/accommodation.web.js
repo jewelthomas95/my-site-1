@@ -282,7 +282,12 @@ function billLines(booking) {
   });
   for (const item of booking.facilityUses || []) {
     const people = ['per-person-day', 'per-person-stay'].includes(item.unit) ? Number(booking.partySize || 1) : 1;
-    lines.push({ description: item.name || 'Additional facility', quantity: Number(item.quantity || 1) * people, rate: Number(item.rate || 0), amount: Number(item.rate || 0) * Number(item.quantity || 1) * people });
+    const quantity = Number(item.quantity || 1);
+    const rate = Number(item.rate || 0);
+    const unitText = { 'per-day': 'per day', 'per-person-day': 'per person per day', 'per-stay': 'per stay', 'per-person-stay': 'per person per stay' }[item.unit] || 'per use';
+    const countText = `${quantity} ${item.unit?.includes('day') ? (quantity === 1 ? 'day' : 'days') : (quantity === 1 ? 'stay' : 'stays')}`;
+    const basis = people > 1 ? `${countText} × ${people} people` : countText;
+    lines.push({ description: `${item.name || 'Additional facility'} · ${basis} @ ₹${rate.toFixed(2)} ${unitText}`, quantity: quantity * people, rate, amount: rate * quantity * people });
   }
   return lines.map(line => ({ ...line, amount: Math.round(line.amount * 100) / 100 }));
 }
