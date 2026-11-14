@@ -464,7 +464,7 @@ export const getBookingDetails = webMethod(Permissions.SiteMember, async booking
   const user = await requireOperationalStaff();
   const booking = await getBookingByReference(bookingId);
   const [guests, payments] = await Promise.all([
-    all(C.guests, q => q.eq('bookingId', booking._id)),
+    all(C.guests, q => q.eq('bookingId', booking._id).ascending('_createdDate')),
     all(C.payments, q => q.eq('bookingId', booking._id).ascending('receivedAt'))
   ]);
   await audit(user, 'BOOKING_GUEST_DETAILS_VIEWED', booking._id, { guestCount: guests.length });
@@ -792,7 +792,8 @@ async function saveCheckInAction(bookingId, payload) {
 
   const user = await requireCheckInStaff();
   const booking = await getBooking(boundedText(bookingId, 'Booking', 100));
-  if (!['CONFIRMED', 'CHECKED_IN'].includes(booking.status)) fail('Only confirmed bookings can be checked in.');
+  const originalStatus = booking.status;
+  if (!['CONFIRMED', 'CHECKED_IN', 'CHECKED_OUT'].includes(booking.status)) fail('Only confirmed stays can have guest details edited.');
   if (booking.status === 'CONFIRMED') {
     const today = todayKolkata();
     const startDate = dateKey(new Date(booking.startDate));
@@ -831,6 +832,17 @@ async function saveCheckInAction(bookingId, payload) {
     };
   });
   booking.patientId = boundedText(payload.patientId, 'Patient ID', 100, false);
+  const existing = await all(C.guests, q => q.eq('bookingId', booking._id).ascending('_createdDate'));
+  for (let index = 0; index < guests.length; index += 1) {
+    if (existing[index]) await wixData.update(C.guests, { ...guests[index], _id: existing[index]._id }, WRITE);
+    else await wixData.insert(C.guests, guests[index], WRITE);
+  }
+  await Promise.all(existing.slice(guests.length).map(item => wixData.remove(C.guests, item._id, WRITE)));
+  if (originalStatus === 'CHECKED_OUT') {
+    await wixData.update(C.bookings, booking, WRITE);
+    await audit(user, 'GUEST_DETAILS_CORRECTED', booking._id, { guestCount: guests.length, billUnchanged: true });
+    return { bookingCode: booking.bookingCode, status: booking.status, billTotal: billTotal(booking), balanceDue: Number(booking.balanceDue || 0) };
+  }
   const stayDateKeys = new Set(stayDays(new Date(booking.startDate), new Date(booking.endDate)).map(dateKey));
   const kitchenDays = (payload.kitchenDays || []).map(day => dateKey(parseDate(day, 'Kitchen-use date')));
   if (new Set(kitchenDays).size !== kitchenDays.length || kitchenDays.some(day => !stayDateKeys.has(day))) fail('Kitchen use can only be recorded once per day during the stay.');
@@ -853,18 +865,12 @@ async function saveCheckInAction(bookingId, payload) {
   const revisedBill = billTotal(booking);
   const paidSoFar = await paidTotal(booking._id);
   if (paidSoFar > revisedBill) fail('These charge changes would make recorded payments exceed the revised bill. Review the charges before saving.');
-  const existing = await all(C.guests, q => q.eq('bookingId', booking._id));
-  for (let index = 0; index < guests.length; index += 1) {
-    if (existing[index]) await wixData.update(C.guests, { ...guests[index], _id: existing[index]._id }, WRITE);
-    else await wixData.insert(C.guests, guests[index], WRITE);
-  }
-  await Promise.all(existing.slice(guests.length).map(item => wixData.remove(C.guests, item._id, WRITE)));
   booking.customData = {};
   booking.status = 'CHECKED_IN';
-  booking.checkedInAt = new Date();
+  if (originalStatus === 'CONFIRMED') booking.checkedInAt = new Date();
   booking.balanceDue = Math.max(0, billTotal(booking) - await paidTotal(booking._id));
   await wixData.update(C.bookings, booking, WRITE);
-  await audit(user, 'GUEST_CHECKED_IN', booking._id, { guestCount: guests.length });
+  await audit(user, originalStatus === 'CONFIRMED' ? 'GUEST_CHECKED_IN' : 'GUEST_DETAILS_UPDATED', booking._id, { guestCount: guests.length });
   return { bookingCode: booking.bookingCode, status: booking.status, billTotal: billTotal(booking), balanceDue: booking.balanceDue };
 }
 
