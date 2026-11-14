@@ -1,0 +1,88 @@
+{
+  "collections": [
+    {
+      "id": "Resources",
+      "displayName": "Accommodation resources",
+      "permissions": { "read": "ADMIN", "insert": "ADMIN", "update": "ADMIN", "remove": "ADMIN" },
+      "indexes": [],
+      "fields": {
+        "name": "TEXT", "kind": "TEXT", "active": "BOOLEAN", "capacity": "NUMBER",
+        "bedsDescription": "TEXT", "bathroom": "TEXT", "kitchen": "TEXT", "amenities": "ARRAY",
+        "dailyRate": "NUMBER", "rateUnit": "TEXT", "sortOrder": "NUMBER", "createdAt": "DATETIME",
+        "createdBy": "TEXT", "updatedAt": "DATETIME", "updatedBy": "TEXT"
+      }
+    },
+    {
+      "id": "Bookings",
+      "displayName": "Accommodation bookings",
+      "permissions": { "read": "ADMIN", "insert": "ADMIN", "update": "ADMIN", "remove": "ADMIN" },
+      "indexes": [{ "fields": ["status", "startDate"] }, { "fields": ["holdExpiresAt"] }],
+      "fields": {
+        "bookingCode": "TEXT", "source": "TEXT", "status": "TEXT", "resourceId": "TEXT", "resourceNameSnapshot": "TEXT", "resourceKind": "TEXT",
+        "startDate": "DATE", "endDate": "DATE", "partySize": "NUMBER", "bedCount": "NUMBER",
+        "leadName": "TEXT", "phone": "TEXT", "roomRateSnapshot": "NUMBER", "kitchenRateSnapshot": "NUMBER",
+        "requiredPayment": "NUMBER", "holdExpiresAt": "DATETIME", "kitchenDays": "ARRAY", "facilityUses": "ARRAY",
+        "housekeepingStatus": "TEXT", "housekeepingUpdatedAt": "DATETIME", "housekeepingUpdatedBy": "TEXT",
+        "customData": "OBJECT", "patientId": "TEXT", "checkInTimeSnapshot": "TEXT", "checkOutTimeSnapshot": "TEXT",
+        "createdAt": "DATETIME", "confirmedAt": "DATETIME", "checkedInAt": "DATETIME", "checkedOutAt": "DATETIME", "balanceDue": "NUMBER"
+      }
+    },
+    {
+      "id": "BookingLocks",
+      "displayName": "Booking inventory locks",
+      "permissions": { "read": "ADMIN", "insert": "ADMIN", "update": "ADMIN", "remove": "ADMIN" },
+      "indexes": [{ "fields": ["slotKey"], "unique": true }, { "fields": ["bookingId"] }, { "fields": ["stayDate"] }],
+      "fields": { "slotKey": "TEXT", "bookingId": "TEXT", "resourceId": "TEXT", "bedNumber": "NUMBER", "stayDate": "DATE", "holdExpiresAt": "DATETIME" }
+    },
+    {
+      "id": "Guests",
+      "displayName": "Stay guests",
+      "permissions": { "read": "ADMIN", "insert": "ADMIN", "update": "ADMIN", "remove": "ADMIN" },
+      "indexes": [{ "fields": ["bookingId"] }],
+      "fields": { "bookingId": "TEXT", "name": "TEXT", "address": "TEXT", "customData": "OBJECT" }
+    },
+    {
+      "id": "GuestIdentity",
+      "displayName": "Restricted guest identity records",
+      "permissions": { "read": "ADMIN", "insert": "ADMIN", "update": "ADMIN", "remove": "ADMIN" },
+      "indexes": [{ "fields": ["guestId"], "unique": true }],
+      "fields": { "bookingId": "TEXT", "guestId": "TEXT", "aadhaarNumber": "TEXT", "frontFileId": "TEXT", "backFileId": "TEXT", "updatedAt": "DATETIME", "updatedBy": "TEXT" }
+    },
+    {
+      "id": "Payments",
+      "displayName": "Guest payments",
+      "permissions": { "read": "ADMIN", "insert": "ADMIN", "update": "ADMIN", "remove": "ADMIN" },
+      "indexes": [{ "fields": ["bookingId", "receivedAt"] }],
+      "fields": { "bookingId": "TEXT", "amount": "NUMBER", "method": "TEXT", "receivedAt": "DATETIME", "note": "TEXT", "receiptCode": "TEXT", "recordedBy": "TEXT" }
+    },
+    {
+      "id": "Cashbook",
+      "displayName": "Facility receipts and payments",
+      "permissions": { "read": "ADMIN", "insert": "ADMIN", "update": "ADMIN", "remove": "ADMIN" },
+      "indexes": [{ "fields": ["entryDate", "entryType"] }],
+      "fields": { "entryDate": "DATE", "entryType": "TEXT", "category": "TEXT", "description": "TEXT", "amount": "NUMBER", "method": "TEXT", "bookingId": "TEXT", "paymentId": "TEXT", "recordedBy": "TEXT" }
+    },
+    {
+      "id": "Budgets",
+      "displayName": "Facility budgets",
+      "permissions": { "read": "ADMIN", "insert": "ADMIN", "update": "ADMIN", "remove": "ADMIN" },
+      "indexes": [{ "fields": ["periodStart", "category"] }],
+      "fields": { "periodStart": "DATE", "periodEnd": "DATE", "category": "TEXT", "amount": "NUMBER", "notes": "TEXT", "createdAt": "DATETIME", "createdBy": "TEXT", "updatedAt": "DATETIME", "updatedBy": "TEXT" }
+    },
+    {
+      "id": "FacilitySettings",
+      "displayName": "Facility settings and chargeable facilities",
+      "permissions": { "read": "ADMIN", "insert": "ADMIN", "update": "ADMIN", "remove": "ADMIN" },
+      "indexes": [{ "fields": ["settingKey"], "unique": true }],
+      "fields": { "settingKey": "TEXT", "value": "OBJECT" }
+    },
+    {
+      "id": "AuditLog",
+      "displayName": "Facility audit log",
+      "permissions": { "read": "ADMIN", "insert": "ADMIN", "update": "ADMIN", "remove": "ADMIN" },
+      "indexes": [{ "fields": ["occurredAt"] }, { "fields": ["recordId"] }],
+      "fields": { "actorId": "TEXT", "actorRole": "TEXT", "action": "TEXT", "recordId": "TEXT", "occurredAt": "DATETIME", "details": "OBJECT" }
+    }
+  ]
+}
+
