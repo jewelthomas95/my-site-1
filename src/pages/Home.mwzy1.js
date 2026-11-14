@@ -49,8 +49,16 @@ const methods = {
   deleteGuestIdentity
 };
 
-$w.onReady(() => {
-  const app = $w('#havenApp');
+function connectAccommodationApp(selector) {
+  let app;
+  try {
+    app = $w(selector);
+  } catch (_) {
+    // The mobile-only component may not exist until it is added in the Wix Editor.
+    return;
+  }
+  if (!app) return;
+
   app.onMessage(async event => {
     const request = event.data;
     if (!request || typeof request !== 'object') return;
@@ -105,5 +113,9 @@ $w.onReady(() => {
       });
     }
   });
-});
+}
 
+$w.onReady(() => {
+  connectAccommodationApp('#havenApp');
+  connectAccommodationApp('#havenAppMobile');
+});
