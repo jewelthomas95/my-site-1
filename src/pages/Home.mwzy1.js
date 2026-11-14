@@ -4,7 +4,7 @@
  * accommodation-shell.html into it, and sync this page code through Git.
  * All writes still pass through the role-checked Velo web methods.
  */
-import { authentication } from 'wix-members-frontend';
+import { authentication } from '@wix/site-members';
 
 import {
   getPublicResources, getPublicSettings, getPublicAvailability, createPublicHold, rescheduleBooking,
