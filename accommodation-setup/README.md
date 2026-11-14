@@ -7,9 +7,9 @@ This is the Wix Editor implementation of the church accommodation app. The featu
 The working interface is a responsive HTML Component on the Home page, backed by role-checked Velo web methods. Staff use the visible Staff login tab to sign in; their Wix role determines which tools appear. To connect it:
 
 1. Add a desktop **Embed Code → Embed HTML** component to Home with ID `havenApp`; in Wix's Mobile Editor, hide that desktop embed on mobile and add a mobile-only embed with ID `havenAppMobile`, paste the same shell, and size it to the mobile page width.
-2. Paste `accommodation-setup/page-templates/accommodation-shell.html` into the component's code editor.
-3. The repository's `src/pages/Home.mwzy1.js` acts as the Wix-to-app bridge. Keep the HTML component code and page-code ID in sync.
-4. In Codespaces, use the `codex/accommodation-management` branch and run `wix dev --tunnel`. Wix's Local Editor connection is now working. Use Preview to inspect changes; publishing is a separate step.
+2. Paste `accommodation-setup/page-templates/accommodation-shell.html` into both the desktop and mobile HTML components.
+3. The repository's `src/pages/Home.mwzy1.js` bridges both components (`havenApp` and `havenAppMobile`) to the same role-checked backend. Keep both embedded shell copies and IDs in sync.
+4. In Codespaces, use the `codex/accommodation-management` branch and run `wix dev --tunnel` to connect the Local Editor. Use its Preview on desktop and mobile to inspect changes; publishing is a separate step.
 
 Before live use, install and sync the repository dependencies, create and assign staff roles, then verify sign-in, booking and payment flows, role-specific access, housekeeping, reports, and private Aadhaar upload/access in Preview. The Dormitory is set to ₹100 per bed per day. Public bookings require the inventory-lock unique index to remain `ACTIVE`. The Dormitory is set to ₹100 per bed per day. Public bookings require the inventory-lock unique index to remain `ACTIVE`.
 
