@@ -6,7 +6,7 @@ This is the Wix Editor implementation of the church accommodation app. The featu
 
 The working interface is a responsive HTML Component on the Home page, backed by role-checked Velo web methods. Staff use the visible Staff login tab to sign in; their Wix role determines which tools appear. To connect it:
 
-1. Add one **Embed Code → Embed HTML** component to Home, stretch it to the page content width, and set its ID to `havenApp`.
+1. Add a desktop **Embed Code → Embed HTML** component to Home with ID `havenApp`; in Wix's Mobile Editor, hide that desktop embed on mobile and add a mobile-only embed with ID `havenAppMobile`, paste the same shell, and size it to the mobile page width.
 2. Paste `accommodation-setup/page-templates/accommodation-shell.html` into the component's code editor.
 3. The repository's `src/pages/Home.mwzy1.js` acts as the Wix-to-app bridge. Keep the HTML component code and page-code ID in sync.
 4. In Codespaces, use the `codex/accommodation-management` branch and run `wix dev --tunnel`. Wix's Local Editor connection is now working. Use Preview to inspect changes; publishing is a separate step.
