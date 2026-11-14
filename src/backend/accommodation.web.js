@@ -788,6 +788,15 @@ async function setHousekeepingStatusAction(bookingId, status) {
 export const setHousekeepingStatus = webMethod(Permissions.SiteMember, async (bookingId, status) =>
   withBookingOperation(bookingId, () => setHousekeepingStatusAction(bookingId, status)));
 
+async function persistBookingGuests(bookingId, guests) {
+  const existing = await all(C.guests, q => q.eq('bookingId', bookingId).ascending('_createdDate'));
+  for (let index = 0; index < guests.length; index += 1) {
+    if (existing[index]) await wixData.update(C.guests, { ...guests[index], _id: existing[index]._id }, WRITE);
+    else await wixData.insert(C.guests, guests[index], WRITE);
+  }
+  await Promise.all(existing.slice(guests.length).map(item => wixData.remove(C.guests, item._id, WRITE)));
+}
+
 async function saveCheckInAction(bookingId, payload) {
 
   const user = await requireCheckInStaff();
@@ -832,13 +841,8 @@ async function saveCheckInAction(bookingId, payload) {
     };
   });
   booking.patientId = boundedText(payload.patientId, 'Patient ID', 100, false);
-  const existing = await all(C.guests, q => q.eq('bookingId', booking._id).ascending('_createdDate'));
-  for (let index = 0; index < guests.length; index += 1) {
-    if (existing[index]) await wixData.update(C.guests, { ...guests[index], _id: existing[index]._id }, WRITE);
-    else await wixData.insert(C.guests, guests[index], WRITE);
-  }
-  await Promise.all(existing.slice(guests.length).map(item => wixData.remove(C.guests, item._id, WRITE)));
   if (originalStatus === 'CHECKED_OUT') {
+    await persistBookingGuests(booking._id, guests);
     await wixData.update(C.bookings, booking, WRITE);
     await audit(user, 'GUEST_DETAILS_CORRECTED', booking._id, { guestCount: guests.length, billUnchanged: true });
     return { bookingCode: booking.bookingCode, status: booking.status, billTotal: billTotal(booking), balanceDue: Number(booking.balanceDue || 0) };
@@ -865,6 +869,7 @@ async function saveCheckInAction(bookingId, payload) {
   const revisedBill = billTotal(booking);
   const paidSoFar = await paidTotal(booking._id);
   if (paidSoFar > revisedBill) fail('These charge changes would make recorded payments exceed the revised bill. Review the charges before saving.');
+  await persistBookingGuests(booking._id, guests);
   booking.customData = {};
   booking.status = 'CHECKED_IN';
   if (originalStatus === 'CONFIRMED') booking.checkedInAt = new Date();
