@@ -10,7 +10,7 @@ import {
   getPublicResources, getPublicAvailability, createPublicHold,
   getStaffBootstrap, listBookings, getBookingDetails, createStaffBooking,
   getHousekeepingTasks, setHousekeepingStatus, getAuditLog,
-  confirmHold, getBillingDetails, getReceipt, recordPayment, saveCheckIn,
+  confirmHold, cancelHold, getBillingDetails, getReceipt, recordPayment, saveCheckIn,
   checkOut, addCashbookEntry, getFinancialReport, saveBudget,
   saveResource, saveFacilitySettings, getGuestIdentity,
   generateGuestDocumentUploadUrl, getGuestDocumentUploadStatus, saveGuestIdentity, deleteGuestIdentity
@@ -28,6 +28,7 @@ const methods = {
   setHousekeepingStatus,
   getAuditLog,
   confirmHold,
+  cancelHold,
   getBillingDetails,
   getReceipt,
   recordPayment,
