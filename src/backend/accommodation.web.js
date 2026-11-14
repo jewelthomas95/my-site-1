@@ -351,9 +351,12 @@ export const listBookings = webMethod(Permissions.SiteMember, async (filters = {
   await requireOperationalStaff();
   await expireHolds();
   const start = filters.startDate ? parseDate(filters.startDate, 'Start date') : new Date(0);
-  const end = filters.endDate ? new Date(parseDate(filters.endDate, 'End date').getTime() + DAY_MS) : new Date('9999-12-31T00:00:00.000Z');
+  const endDate = filters.endDate ? parseDate(filters.endDate, 'End date') : new Date('9999-12-30T00:00:00.000Z');
+  if (endDate < start) fail('End date cannot be before start date.');
+  const endExclusive = new Date(endDate.getTime() + DAY_MS);
   const bookings = await all(C.bookings, q => {
-    let query = q.ge('startDate', start).lt('startDate', end).descending('startDate');
+    // Include stays that overlap the requested calendar window, including same-day stays.
+    let query = q.lt('startDate', endExclusive).ge('endDate', start).descending('startDate');
     if (filters.status) query = query.eq('status', boundedText(filters.status, 'Status', 30));
     return query;
   });
