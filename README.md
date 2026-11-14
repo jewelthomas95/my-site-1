@@ -21,7 +21,7 @@ The app branch includes a responsive booking and staff interface, including a mo
 ## Local Editor workflow
 
 1. In Codespaces, switch to `codex/accommodation-management` and pull the latest branch changes.
-2. Run `npm install` from the repository root to restore the packages listed in `package.json`, including `@wix/site-members`.
+2. Run `npm install` from the repository root to restore the packages listed in `package.json`, including `@wix/site-members`. If npm creates or changes `package-lock.json`, include that lockfile when committing dependency updates.
 3. If Wix reports a missing site package, run `wix install @wix/media`, `wix install @wix/essentials`, or `wix install @wix/site-members` for the package it names, then sync the types.
 4. Run `wix dev --tunnel` and open the Local Editor connection.
 5. Confirm Home has an HTML Component with ID `havenApp`, paste the latest shell into its **Edit Code** panel, and set the component dimensions to fill the page area.
