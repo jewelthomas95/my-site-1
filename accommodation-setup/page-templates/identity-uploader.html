@@ -1,0 +1,56 @@
+<section>
+  <h3>Private Aadhaar photos</h3>
+  <p>Upload JPG or PNG images up to 10 MB. Files are sent directly to Wix using a private upload link.</p>
+  <label>Front of card <input id="front" type="file" accept="image/jpeg,image/png"></label>
+  <button id="uploadFront" type="button">Upload front</button>
+  <label>Back of card <input id="back" type="file" accept="image/jpeg,image/png"></label>
+  <button id="uploadBack" type="button">Upload back</button>
+  <p id="status" role="status"></p>
+</section>
+<script>
+  const selected = {};
+  const status = document.getElementById('status');
+  function askForUrl(side) {
+    const input = document.getElementById(side);
+    const file = input.files && input.files[0];
+    if (!file) {
+      status.textContent = `Choose the ${side} image first.`;
+      return;
+    }
+    if (!['image/jpeg', 'image/png'].includes(file.type) || file.size > 10 * 1024 * 1024) {
+      status.textContent = 'Use a JPG or PNG image up to 10 MB.';
+      return;
+    }
+    selected[side] = file;
+    status.textContent = `Preparing a private upload for the ${side} image…`;
+    parent.postMessage({ type: 'identityFileSelected', side, fileName: file.name, mimeType: file.type }, '*');
+  }
+  document.getElementById('uploadFront').addEventListener('click', () => askForUrl('front'));
+  document.getElementById('uploadBack').addEventListener('click', () => askForUrl('back'));
+  window.addEventListener('message', async event => {
+    const message = event.data;
+    if (!message || message.type !== 'identityUploadUrl') return;
+    const file = selected[message.side];
+    if (!file) return;
+    try {
+      status.textContent = `Uploading the ${message.side} image…`;
+      const response = await fetch(message.uploadUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': file.type },
+        body: file
+      });
+      if (!response.ok) throw new Error(`Upload failed (${response.status}).`);
+      const result = await response.json();
+      const fileId = result.file && result.file.id;
+      const isPrivate = result.file && result.file.private === true;
+      if (!fileId || !isPrivate) throw new Error('Wix did not confirm a private image upload.');
+      status.textContent = `The ${message.side} image is uploaded privately.`;
+      parent.postMessage({ type: 'identityFileUploaded', side: message.side, fileId, isPrivate }, '*');
+      delete selected[message.side];
+    } catch (error) {
+      status.textContent = error.message || 'Upload failed. Try again.';
+      parent.postMessage({ type: 'identityFileUploadFailed', side: message.side, message: status.textContent }, '*');
+    }
+  });
+</script>
+

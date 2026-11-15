@@ -9,5 +9,10 @@
     "postinstall": "wix sync-types",
     "dev": "wix dev",
     "lint": "eslint ."
+  },
+  "dependencies": {
+    "@wix/essentials": "^1.0.15",
+    "@wix/media": "^1.0.361",
+    "@wix/site-members": "^1.36.0"
   }
 }

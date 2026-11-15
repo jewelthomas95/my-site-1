@@ -1,0 +1,29 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { font: 15px/1.5 Arial, sans-serif; color: #17241f; margin: 24px; }
+      #printRoot { max-width: 780px; margin: auto; }
+      h1, h2 { margin: 0 0 8px; }
+      .muted { color: #53635c; }
+      .row { display: flex; justify-content: space-between; gap: 24px; padding: 8px 0; border-bottom: 1px solid #e1e8e4; }
+      .total { font-weight: 700; font-size: 18px; }
+      @media print { body { margin: 12mm; } button { display: none; } }
+    </style>
+  </head>
+  <body>
+    <main id="printRoot" aria-live="polite">Bill or receipt preview appears here.</main>
+    <script>
+      window.addEventListener('message', event => {
+        const message = event.data;
+        if (!message || message.type !== 'printDocument' || typeof message.html !== 'string') return;
+        document.getElementById('printRoot').innerHTML = message.html;
+        window.focus();
+        setTimeout(() => window.print(), 100);
+      });
+    </script>
+  </body>
+</html>
+

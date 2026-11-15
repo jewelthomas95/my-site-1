@@ -1,45 +1,36 @@
-# Git Integration & Wix CLI <img align="left" src="https://user-images.githubusercontent.com/89579857/185785022-cab37bf5-26be-4f11-85f0-1fac63c07d3b.png">
+# Church Accommodation Management
 
-This repo is part of Git Integration & Wix CLI, a set of tools that allows you to write, test, and publish code for your Wix site locally on your computer. 
+This repository contains the Wix Velo code for the church accommodation app on **My Site 1**.
 
-Connect your site to GitHub, develop in your favorite IDE, test your code in real time, and publish your site from the command line.
+## Published-site status
 
-## Set up this repository in your IDE
-This repo is connected to a Wix site. That site tracks this repo's default branch. Any code committed and pushed to that branch from your local IDE appears on the site.
+The published Home page currently renders the accommodation booking interface. The Wix site still shows starter-template branding and contact details in its header and footer, and the phone layout still needs review. The current code changes are on the open draft pull request [#1](https://github.com/jewelthomas95/my-site-1/pull/1); the public page's visible app does not prove that it is running this branch.
 
-Before getting started, make sure you have the following things installed:
-* [Git](https://git-scm.com/download)
-* [Node](https://nodejs.org/en/download/), version 14.8 or later.
-* [npm](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm) or [yarn](https://yarnpkg.com/getting-started/install)
-* An SSH key [added to your GitHub account](https://docs.github.com/en/authentication/connecting-to-github-with-ssh/adding-a-new-ssh-key-to-your-github-account).
+The Home-page bridge is in `src/pages/Home.mwzy1.js`. Its HTML Component is `havenApp`; the full component contents are in `accommodation-setup/page-templates/accommodation-shell.html` and must be kept in sync in Wix Editor. The branch includes the booking and staff interface, month-by-month stay calendar with space filters, and rescheduling for active stays. The component should span the page content width and have enough height to show the app without an inner scroll bar. The separate Wix routes for Book, Staff, Facility Settings, and Guest Identity now return visitors to Home, where those features are available inside the accommodation app. This avoids blank pages when the Wix site menu is used.
 
-To set up your local environment and start coding locally, do the following:
+## Current setup
 
-1. Open your terminal and navigate to where you want to store the repo.
-1. Clone the repo by running `git clone <your-repository-url>`.
-1. Navigate to the repo's directory by running `cd <directory-name>`.
-1. Install the repo's dependencies by running `npm install` or `yarn install`.
-1. Install the Wix CLI by running `npm install -g @wix/cli` or `yarn global add @wix/cli`.  
-   Once you've installed the CLI globally, you can use it with any Wix site's repo.
+- Wix site: **My Site 1**, `ceec11db-0fdb-4bbb-93bf-8a37080b4d24`.
+- Accommodation resources and CMS collections have been created on the site.
+- Initial rate for the Dormitory is **₹100 per bed per day**.
+- The booking and staff interfaces display dormitory rates per bed per day.
+- The visible Staff login tab opens Wix sign-in. The Administrator can sign out from the staff workspace; the app reloads after Wix confirms logout to clear the displayed workspace. App access is role-specific: `Administrator` has full access; `Accountant` has bookings and accounts; `Caretaker` has bookings, payment handling, and cleaning; `Cleaner` has a guest-free cleaning task list. Create and assign those Wix member roles before staff sign in. Only `Administrator` (and the Wix site `Admin`) can access facility settings and Aadhaar records.
+- Administrators have an in-app audit log for guest-record views and key changes; the log omits Aadhaar values and photos.
+- Private Aadhaar storage and access must be verified in Preview before entering real identity information.
 
-For more information, see [Setting up Git Integration & Wix CLI](https://support.wix.com/en/article/velo-setting-up-git-integration-wix-cli-beta).
+## Local Editor workflow
 
-## Write Velo code in your IDE
-Once your repo is set up, you can write code in it as you would in any other non-Wix project. The repo's file structure matches the [public](https://support.wix.com/en/article/velo-working-with-the-velo-sidebar#public), [backend](https://support.wix.com/en/article/velo-working-with-the-velo-sidebar#backend), and [page code](https://support.wix.com/en/article/velo-working-with-the-velo-sidebar#page-code) sections in Editor X.
+1. In Codespaces, switch to `codex/accommodation-management` and pull the latest branch changes.
+2. Run `npm install` from the repository root to restore the packages listed in `package.json`, including `@wix/site-members`. If npm creates or changes `package-lock.json`, include that lockfile when committing dependency updates.
+3. If Wix reports a missing site package, run `wix install @wix/media`, `wix install @wix/essentials`, or `wix install @wix/site-members` for the package it names, then sync the types.
+4. Run `wix dev --tunnel` and open the Local Editor connection.
+5. Confirm Home has an HTML Component with ID `havenApp`, paste the latest shell into its **Edit Code** panel, and set the component dimensions to fill the page area.
+6. Preview public booking, staff sign-in, role access, cleaning tasks, private Aadhaar files, booking holds, date changes and updated bills, receipts, and financial statements before publishing. Wix's `wix-location-frontend.to()` method does not work in Preview, so test the Book, Staff, Facility Settings, and Guest Identity redirects on the published site after syncing and publishing the page code ([Wix Velo Location API](https://dev.wix.com/docs/velo/apis/wix-location-frontend/to)).
 
-Learn more about [this repo's file structure](https://support.wix.com/en/article/velo-understanding-your-sites-github-repository-beta).
+## Data and security
 
-## Test your code with the Local Editor
-The Local Editor allows you test changes made to your site in real time. The code in your local IDE is synced with the Local Editor, so you can test your changes before committing them to your repo. You can also change the site design in the Local Editor and sync it with your IDE.
+See `accommodation-setup/schema.json` for CMS collection fields and indexes. All CMS records should remain administrator-only; app operations use role-checked backend web methods. The `BookingLocks.slotKey` unique index must be active before public bookings are enabled. Never enter real Aadhaar data until identity access and private file handling have been verified in Preview.
 
-Start the Local Editor by navigating to this repo's directory in your terminal and running `wix dev`.
+## Deployment
 
-For more information, see [Working with the Local Editor](https://support.wix.com/en/article/velo-working-with-the-local-editor-beta).
-
-## Preview and publish with the Wix CLI
-The Wix CLI is a tool that allows you to work with your site locally from your computer's terminal. You can use it to build a preview version of your site and publish it. You can also use the CLI to install [approved npm packages](https://support.wix.com/en/article/velo-working-with-npm-packages) to your site.
-
-Learn more about [working with the Wix CLI](https://support.wix.com/en/article/velo-working-with-the-wix-cli-beta).
-
-## Invite contributors to work with you
-Git Integration & Wix CLI extends Editor X's [concurrent editing](https://support.wix.com/en/article/editor-x-about-concurrent-editing) capabilities. Invite other developers as collaborators on your [site](https://support.wix.com/en/article/inviting-people-to-contribute-to-your-site) and your [GitHub repo](https://docs.github.com/en/account-and-profile/setting-up-and-managing-your-personal-account-on-github/managing-access-to-your-personal-repositories/inviting-collaborators-to-a-personal-repository). Multiple developers can work on a site's code at once.
+The feature branch is not live. Merging pull request #1 into `main` will sync its Velo code to the Wix site; the Home HTML Component must also be saved in Wix Editor. Preview and verify the complete Home page before publishing the site.

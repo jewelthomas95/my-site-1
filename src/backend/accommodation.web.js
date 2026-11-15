@@ -1,0 +1,1288 @@
+import wixData from 'wix-data';
+import { webMethod, Permissions } from 'wix-web-module';
+import { currentMember } from 'wix-members-backend';
+import { files } from '@wix/media';
+import { auth } from '@wix/essentials';
+
+const C = {
+  resources: 'Resources', bookings: 'Bookings', locks: 'BookingLocks', guests: 'Guests',
+  identity: 'GuestIdentity', payments: 'Payments', cashbook: 'Cashbook', budgets: 'Budgets', settings: 'FacilitySettings', audit: 'AuditLog'
+};
+const ADMIN_ROLES = new Set(['Accommodation Administrator', 'Administrator', 'Admin']);
+const ACCOUNTANT_ROLES = new Set(['Accountant']);
+const CARETAKER_ROLES = new Set(['Caretaker']);
+const CLEANER_ROLES = new Set(['Cleaner']);
+const READ = { suppressAuth: true };
+const WRITE = { suppressAuth: true };
+const DAY_MS = 86_400_000;
+const MAX_STAY_DAYS = 366;
+
+function fail(message, code = 'INVALID_REQUEST') {
+  const error = new Error(message);
+  error.code = code;
+  throw error;
+}
+
+function boundedText(value, field, max = 180, required = true) {
+  const text = String(value ?? '').trim();
+  if (required && !text) fail(`${field} is required.`);
+  if (text.length > max) fail(`${field} is too long.`);
+  return text;
+}
+
+function phoneText(value) {
+  const phone = boundedText(value, 'Phone number', 40);
+  const digits = phone.replace(/\D/g, '');
+  if (!/^[+()\d.\-\s]+$/.test(phone) || digits.length < 7 || digits.length > 15) fail('Enter a valid phone number with 7 to 15 digits.');
+  return phone;
+}
+
+function parseDate(value, field) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) fail(`${field} must be a calendar date.`);
+  const date = new Date(`${value}T00:00:00.000Z`);
+  if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== value) fail(`${field} is invalid.`);
+  return date;
+}
+
+function dateKey(date) { return date.toISOString().slice(0, 10); }
+function kolkataDayStart(value, field) {
+  const key = dateKey(parseDate(value, field));
+  return new Date(`${key}T00:00:00+05:30`);
+}
+function todayKolkata() {
+  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date());
+  const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+function stayDays(start, end) {
+  if (end < start) fail('Checkout cannot be before check-in.');
+  const count = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / DAY_MS));
+  if (count > MAX_STAY_DAYS) fail('A single booking cannot exceed 366 days.');
+  return Array.from({ length: count }, (_, i) => new Date(start.getTime() + i * DAY_MS));
+}
+function validAmount(value, field, allowZero = false) {
+  const amount = Number(value);
+  if (!Number.isFinite(amount) || (allowZero ? amount < 0 : amount <= 0)) fail(`${field} must be ${allowZero ? 'zero or greater' : 'greater than zero'}.`);
+  return Math.round(amount * 100) / 100;
+}
+function randomCode(prefix) {
+  return `${prefix}-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
+}
+
+async function viewer() {
+  try {
+    const member = await currentMember.getMember({ fieldsets: ['FULL'] });
+    const roles = await currentMember.getRoles();
+    const names = new Set((roles || []).map(role => role.title || role.name).filter(Boolean));
+    const role = [...ADMIN_ROLES].some(name => names.has(name)) ? 'admin'
+      : [...ACCOUNTANT_ROLES].some(name => names.has(name)) ? 'accountant'
+        : [...CARETAKER_ROLES].some(name => names.has(name)) ? 'caretaker'
+          : [...CLEANER_ROLES].some(name => names.has(name)) ? 'cleaner'
+            : null;
+    return { id: member._id, role };
+  } catch (_) {
+    return null;
+  }
+}
+
+async function requireStaff() {
+  const user = await viewer();
+  if (!user || !user.role) fail('An approved accommodation staff account is required.', 'FORBIDDEN');
+  return user;
+}
+
+async function requireAdmin() {
+  const user = await viewer();
+  if (!user || user.role !== 'admin') fail('Administrator access is required.', 'FORBIDDEN');
+  return user;
+}
+
+async function requireOperationalStaff() {
+  const user = await requireStaff();
+  if (!['admin', 'accountant', 'caretaker'].includes(user.role)) fail('Booking access is not available for this staff role.', 'FORBIDDEN');
+  return user;
+}
+
+async function requireCheckInStaff() {
+  const user = await requireStaff();
+  if (!['admin', 'caretaker'].includes(user.role)) fail('Guest check-in details are restricted to the Administrator and Caretaker.', 'FORBIDDEN');
+  return user;
+}
+
+async function requirePaymentStaff() {
+  const user = await requireStaff();
+  if (!['admin', 'accountant', 'caretaker'].includes(user.role)) fail('Payment access is not available for this staff role.', 'FORBIDDEN');
+  return user;
+}
+
+async function requireFinanceStaff() {
+  const user = await requireStaff();
+  if (!['admin', 'accountant'].includes(user.role)) fail('Accounting access is restricted to the Administrator and Accountant.', 'FORBIDDEN');
+  return user;
+}
+
+async function requireHousekeepingStaff() {
+  const user = await requireStaff();
+  if (!['admin', 'caretaker', 'cleaner'].includes(user.role)) fail('Housekeeping access is not available for this staff role.', 'FORBIDDEN');
+  return user;
+}
+
+async function all(collection, build = q => q, options = READ) {
+  const query = build(wixData.query(collection)).limit(1000);
+  let result = await query.find(options);
+  const items = [...result.items];
+  while (result.hasNext()) {
+    result = await result.next();
+    items.push(...result.items);
+  }
+  return items;
+}
+
+async function getSetting(settingKey, fallback) {
+  const result = await wixData.query(C.settings).eq('settingKey', settingKey).limit(1).find(READ);
+  return result.items[0]?.value ?? fallback;
+}
+
+async function requireInventoryReady() {
+  const ready = await getSetting('inventoryIndexReady', false);
+  if (ready !== true) fail('Bookings are temporarily unavailable while the inventory protection index finishes setup.', 'SETUP_PENDING');
+}
+
+async function audit(user, action, recordId, details = {}) {
+  await wixData.insert(C.audit, {
+    actorId: user.id, actorRole: user.role, action, recordId: String(recordId || ''),
+    occurredAt: new Date(), details
+  }, WRITE);
+}
+
+async function getBooking(bookingId) {
+  const booking = await wixData.get(C.bookings, bookingId, { ...READ, consistentRead: true });
+  if (!booking) fail('Booking was not found.', 'NOT_FOUND');
+  return booking;
+}
+
+async function getBookingByReference(reference) {
+  const value = boundedText(reference, 'Booking reference', 120);
+  if (value.startsWith('HV-')) {
+    const result = await wixData.query(C.bookings).eq('bookingCode', value).limit(1).find(READ);
+    if (!result.items[0]) fail('Booking was not found.', 'NOT_FOUND');
+    return result.items[0];
+  }
+  return getBooking(value);
+}
+
+// The unique slotKey index serializes one booking's mutations; negative bedNumber keeps markers out of room availability.
+async function withBookingOperation(bookingId, action) {
+  const id = boundedText(bookingId, 'Booking', 100);
+  const slotKey = `__operation__|${id}`;
+  const operationBookingId = `__operation__:${id}`;
+  const now = Date.now();
+  const acquire = () => wixData.insert(C.locks, {
+    slotKey, bookingId: operationBookingId, resourceId: '', bedNumber: -1,
+    stayDate: new Date(), holdExpiresAt: new Date(now + 5 * 60 * 1000)
+  }, WRITE);
+
+  let lock;
+  try {
+    lock = await acquire();
+  } catch (insertError) {
+    const existing = await wixData.query(C.locks).eq('slotKey', slotKey).limit(1).find({ ...READ, consistentRead: true });
+    const current = existing.items[0];
+    if (!current) throw insertError;
+    if (!current.holdExpiresAt || new Date(current.holdExpiresAt).getTime() > Date.now()) {
+      fail('Another staff action is updating this booking. Please retry in a moment.', 'OPERATION_IN_PROGRESS');
+    }
+    await wixData.remove(C.locks, current._id, WRITE);
+    try {
+      lock = await acquire();
+    } catch (retryError) {
+      const winner = await wixData.query(C.locks).eq('slotKey', slotKey).limit(1).find({ ...READ, consistentRead: true });
+      if (winner.items[0]) fail('Another staff action is updating this booking. Please retry in a moment.', 'OPERATION_IN_PROGRESS');
+      throw retryError;
+    }
+  }
+
+  try {
+    return await action();
+  } finally {
+    await wixData.remove(C.locks, lock._id, WRITE).catch(() => undefined);
+  }
+}
+
+async function removeLocks(bookingId) {
+  const locks = await all(C.locks, q => q.eq('bookingId', bookingId));
+  await Promise.all(locks.map(lock => wixData.remove(C.locks, lock._id, WRITE)));
+}
+
+async function makeLocksPermanent(bookingId) {
+  const locks = await all(C.locks, q => q.eq('bookingId', bookingId));
+  await Promise.all(locks.map(lock => {
+    lock.holdExpiresAt = null;
+    return wixData.update(C.locks, lock, WRITE);
+  }));
+}
+
+async function setLockExpiry(bookingId, holdExpiresAt) {
+  const locks = await all(C.locks, q => q.eq('bookingId', bookingId));
+  await Promise.all(locks.map(lock => {
+    lock.holdExpiresAt = holdExpiresAt;
+    return wixData.update(C.locks, lock, WRITE);
+  }));
+}
+
+async function expireHolds() {
+  const now = new Date();
+  const expired = await all(C.bookings, q => q.eq('status', 'HOLD').le('holdExpiresAt', now));
+  for (const candidate of expired) {
+    try {
+      await withBookingOperation(candidate._id, async () => {
+        const booking = await wixData.get(C.bookings, candidate._id, { ...READ, consistentRead: true });
+        if (!booking || booking.status !== 'HOLD' || new Date(booking.holdExpiresAt).getTime() > Date.now()) return;
+        booking.status = 'EXPIRED';
+        await wixData.update(C.bookings, booking, WRITE);
+        await removeLocks(booking._id);
+      });
+    } catch (error) {
+      if (error?.code !== 'OPERATION_IN_PROGRESS') throw error;
+    }
+  }
+}
+
+async function activeLocks(start, end) {
+  const locks = await all(C.locks, q => q.ge('stayDate', start).lt('stayDate', end));
+  const now = Date.now();
+  return locks.filter(lock => Number(lock.bedNumber) >= 0 && (!lock.holdExpiresAt || new Date(lock.holdExpiresAt).getTime() > now));
+}
+
+function billTotal(booking) {
+  const days = stayDays(new Date(booking.startDate), new Date(booking.endDate));
+  const units = booking.resourceKind === 'dorm' ? Number(booking.bedCount || 1) : 1;
+  const room = Number(booking.roomRateSnapshot || 0) * days.length * units;
+  const kitchen = (booking.kitchenDays || []).length * Number(booking.kitchenRateSnapshot || 0);
+  const facilities = (booking.facilityUses || []).reduce((sum, item) => {
+    const people = ['per-person-day', 'per-person-stay'].includes(item.unit) ? Number(booking.partySize || 1) : 1;
+    return sum + Number(item.rate || 0) * Number(item.quantity || 1) * people;
+  }, 0);
+  return Math.round((room + kitchen + facilities) * 100) / 100;
+}
+
+function billLines(booking) {
+  const days = stayDays(new Date(booking.startDate), new Date(booking.endDate));
+  const nights = days.length;
+  const resourceUnits = booking.resourceKind === 'dorm' ? Number(booking.bedCount || 1) : 1;
+  const lines = [{
+    description: `${booking.resourceNameSnapshot} · ${nights} ${nights === 1 ? 'day' : 'days'}${booking.resourceKind === 'dorm' ? ` · ${resourceUnits} beds` : ''}`,
+    quantity: nights * resourceUnits, rate: Number(booking.roomRateSnapshot || 0),
+    amount: Number(booking.roomRateSnapshot || 0) * nights * resourceUnits
+  }];
+  if ((booking.kitchenDays || []).length) lines.push({
+    description: `Common kitchen · ${(booking.kitchenDays || []).length} used days`,
+    quantity: booking.kitchenDays.length, rate: Number(booking.kitchenRateSnapshot || 0),
+    amount: booking.kitchenDays.length * Number(booking.kitchenRateSnapshot || 0)
+  });
+  for (const item of booking.facilityUses || []) {
+    const people = ['per-person-day', 'per-person-stay'].includes(item.unit) ? Number(booking.partySize || 1) : 1;
+    const quantity = Number(item.quantity || 1);
+    const rate = Number(item.rate || 0);
+    const unitText = { 'per-day': 'per day', 'per-person-day': 'per person per day', 'per-stay': 'per stay', 'per-person-stay': 'per person per stay' }[item.unit] || 'per use';
+    const countText = `${quantity} ${item.unit?.includes('day') ? (quantity === 1 ? 'day' : 'days') : (quantity === 1 ? 'stay' : 'stays')}`;
+    const perPerson = ['per-person-day', 'per-person-stay'].includes(item.unit);
+    const basis = perPerson ? `${countText} × ${people} ${people === 1 ? 'person' : 'people'}` : countText;
+    lines.push({ description: `${item.name || 'Additional facility'} · ${basis} @ ₹${rate.toFixed(2)} ${unitText}`, quantity: quantity * people, rate, amount: rate * quantity * people });
+  }
+  return lines.map(line => ({ ...line, amount: Math.round(line.amount * 100) / 100 }));
+}
+
+async function claimSlots(booking, resource, days) {
+  const current = await activeLocks(days[0], new Date(days[days.length - 1].getTime() + DAY_MS));
+  const byDay = new Map(days.map(day => [dateKey(day), new Set(current.filter(lock => dateKey(new Date(lock.stayDate)) === dateKey(day) && lock.resourceId === resource._id).map(lock => Number(lock.bedNumber)))]));
+  const roomKind = resource.kind === 'dorm' ? 'dorm' : 'private';
+  let bedNumbers;
+  if (roomKind === 'private') {
+    if (days.some(day => byDay.get(dateKey(day)).has(0))) fail('That room was just booked for one or more selected dates.', 'UNAVAILABLE');
+    bedNumbers = [0];
+  } else {
+    const free = [];
+    for (let bed = 1; bed <= Number(resource.capacity); bed++) {
+      if (days.every(day => !byDay.get(dateKey(day)).has(bed))) free.push(bed);
+    }
+    if (free.length < Number(booking.bedCount)) fail('There are not enough dormitory beds for those dates.', 'UNAVAILABLE');
+    bedNumbers = free.slice(0, Number(booking.bedCount));
+  }
+
+  const inserted = [];
+  try {
+    for (const day of days) {
+      for (const bedNumber of bedNumbers) {
+        const lock = await wixData.insert(C.locks, {
+          slotKey: `${resource._id}|${dateKey(day)}|${bedNumber}`,
+          bookingId: booking._id, resourceId: resource._id, bedNumber, stayDate: day,
+          holdExpiresAt: booking.holdExpiresAt
+        }, WRITE);
+        inserted.push(lock._id);
+      }
+    }
+  } catch (error) {
+    await Promise.all(inserted.map(id => wixData.remove(C.locks, id, WRITE).catch(() => undefined)));
+    fail('Those dates were booked by someone else. Please choose new dates.', 'UNAVAILABLE');
+  }
+}
+
+// Public methods return only room availability and a booking reference; they never return guest records.
+export const getPublicResources = webMethod(Permissions.Anyone, async () => {
+  await expireHolds();
+  const resources = (await all(C.resources, q => q.eq('active', true).ascending('sortOrder'))).filter(resource => resource.kind !== 'facility');
+  return resources.map(resource => ({
+    id: resource._id, name: resource.name, kind: resource.kind, capacity: resource.capacity,
+    dailyRate: resource.dailyRate ?? null, bedsDescription: resource.bedsDescription || '',
+    bathroom: resource.bathroom || '', kitchen: resource.kitchen || '',
+    amenities: resource.amenities || []
+  }));
+});
+
+export const getPublicSettings = webMethod(Permissions.Anyone, async () => {
+  const settings = await getSetting('general', { facilityName: 'Church Accommodation Facility', checkIn: '14:00', checkOut: '12:00' });
+  return {
+    facilityName: boundedText(settings.facilityName || 'Church Accommodation Facility', 'Facility name', 120),
+    checkIn: /^([01]\d|2[0-3]):[0-5]\d$/.test(settings.checkIn || '') ? settings.checkIn : '14:00',
+    checkOut: /^([01]\d|2[0-3]):[0-5]\d$/.test(settings.checkOut || '') ? settings.checkOut : '12:00'
+  };
+});
+
+export const getPublicAvailability = webMethod(Permissions.Anyone, async (startDate, endDate) => {
+  await requireInventoryReady();
+  await expireHolds();
+  const start = parseDate(startDate, 'Check-in');
+  const end = parseDate(endDate, 'Checkout');
+  if (start < parseDate(todayKolkata(), 'Today')) fail('Check-in date cannot be in the past.');
+  const days = stayDays(start, end);
+  const locks = await activeLocks(days[0], new Date(days[days.length - 1].getTime() + DAY_MS));
+  const resources = (await all(C.resources, q => q.eq('active', true).ascending('sortOrder'))).filter(resource => resource.kind !== 'facility');
+  return resources.map(resource => {
+    const taken = locks.filter(lock => lock.resourceId === resource._id && days.some(day => dateKey(new Date(lock.stayDate)) === dateKey(day)));
+    const occupied = new Map(days.map(day => [dateKey(day), new Set(taken.filter(lock => dateKey(new Date(lock.stayDate)) === dateKey(day)).map(lock => Number(lock.bedNumber)))]));
+    const available = resource.kind === 'dorm'
+      ? Math.max(0, Math.min(...days.map(day => Number(resource.capacity) - occupied.get(dateKey(day)).size)))
+      : (days.some(day => occupied.get(dateKey(day)).has(0)) ? 0 : 1);
+    return { id: resource._id, name: resource.name, kind: resource.kind, capacity: resource.capacity, dailyRate: resource.dailyRate ?? null, available };
+  });
+});
+
+export const createPublicHold = webMethod(Permissions.Anyone, async input => {
+  await requireInventoryReady();
+  await expireHolds();
+  if (!input || typeof input !== 'object') fail('Booking details are required.');
+  const resourceId = boundedText(input.resourceId, 'Accommodation', 100);
+  const leadName = boundedText(input.leadName, 'Lead guest name', 120);
+  const phone = phoneText(input.phone);
+  const partySize = Number(input.partySize);
+  if (!Number.isInteger(partySize) || partySize < 1 || partySize > 20) fail('Guest count must be between 1 and 20.');
+  const start = parseDate(input.startDate, 'Check-in');
+  const end = parseDate(input.endDate, 'Checkout');
+  if (start < parseDate(todayKolkata(), 'Today')) fail('Check-in date cannot be in the past.');
+  const days = stayDays(start, end);
+  const resource = await wixData.get(C.resources, resourceId, READ);
+  if (!resource || !resource.active) fail('That accommodation is not available.', 'NOT_FOUND');
+  if (resource.kind === 'facility') fail('This facility is charged by use and cannot be booked as a room.', 'INVALID_RESOURCE');
+  if (resource.dailyRate === null || resource.dailyRate === undefined) fail('This accommodation rate has not been configured.', 'RATE_REQUIRED');
+  if (resource.kind !== 'dorm' && partySize > Number(resource.capacity)) fail('Guest count exceeds this room capacity.');
+  const bedCount = resource.kind === 'dorm' ? Number(input.bedCount || partySize) : 0;
+  if (resource.kind === 'dorm' && (!Number.isInteger(bedCount) || bedCount < partySize || bedCount > Number(resource.capacity))) fail('Choose enough dormitory beds for the guest group.');
+  const settings = await getSetting('general', { checkIn: '14:00', checkOut: '12:00', timezone: 'Asia/Kolkata' });
+  const kitchen = await getSetting('commonKitchen', { rate: 100, eligibleResourceIds: [] });
+  const booking = await wixData.insert(C.bookings, {
+    bookingCode: randomCode('HV'), source: 'PUBLIC', status: 'ALLOCATING', resourceId,
+    resourceNameSnapshot: resource.name, resourceKind: resource.kind,
+    startDate: start, endDate: end, partySize, bedCount,
+    leadName, phone, roomRateSnapshot: Number(resource.dailyRate), kitchenRateSnapshot: Number(kitchen.rate || 0),
+    requiredPayment: 0, holdExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+    kitchenDays: [], facilityUses: [], customData: {}, createdAt: new Date(), checkInTimeSnapshot: settings.checkIn, checkOutTimeSnapshot: settings.checkOut
+  }, WRITE);
+  try {
+    const currentResource = await wixData.get(C.resources, resourceId, { ...READ, consistentRead: true });
+    if (!currentResource || !currentResource.active) fail('That accommodation is no longer available.', 'NOT_FOUND');
+    await claimSlots(booking, currentResource, days);
+    booking.status = 'HOLD';
+    await wixData.update(C.bookings, booking, WRITE);
+  } catch (error) {
+    await removeLocks(booking._id).catch(() => undefined);
+    await wixData.remove(C.bookings, booking._id, WRITE).catch(() => undefined);
+    throw error;
+  }
+  return { bookingCode: booking.bookingCode, expiresAt: booking.holdExpiresAt, estimatedRoomCharge: billTotal(booking) };
+});
+
+export const getStaffBootstrap = webMethod(Permissions.SiteMember, async () => {
+  const user = await requireStaff();
+  await expireHolds();
+  const general = await getSetting('general', { facilityName: 'Church Accommodation Facility', checkIn: '14:00', checkOut: '12:00', timezone: 'Asia/Kolkata' });
+  const safeSettings = { facilityName: general.facilityName || 'Church Accommodation Facility' };
+  if (user.role === 'cleaner') return { role: user.role, settings: safeSettings, resources: [] };
+
+  const resources = await all(C.resources, q => q.ascending('sortOrder'));
+  if (user.role === 'accountant') {
+    return {
+      role: user.role,
+      settings: safeSettings,
+      resources: resources.map(({ _id, name, kind, active, capacity, dailyRate }) => ({ _id, name, kind, active, capacity, dailyRate }))
+    };
+  }
+
+  const [commonKitchen, chargeableFacilities, guestFields] = await Promise.all([
+    getSetting('commonKitchen', { rate: 100, eligibleResourceIds: [] }),
+    getSetting('chargeableFacilities', { items: [] }),
+    getSetting('guestFields', { fields: [] })
+  ]);
+  return {
+    role: user.role,
+    settings: { ...general, commonKitchen, chargeableFacilities, guestFields },
+    resources: resources.map(({ _id, name, kind, active, capacity, bedsDescription, bathroom, kitchen, amenities, dailyRate }) => ({ _id, name, kind, active, capacity, bedsDescription, bathroom, kitchen, amenities, dailyRate }))
+  };
+});
+
+export const listBookings = webMethod(Permissions.SiteMember, async (filters = {}) => {
+  await requireOperationalStaff();
+  await expireHolds();
+  const start = filters.startDate ? parseDate(filters.startDate, 'Start date') : new Date(0);
+  const endDate = filters.endDate ? parseDate(filters.endDate, 'End date') : new Date('9999-12-30T00:00:00.000Z');
+  if (endDate < start) fail('End date cannot be before start date.');
+  const endExclusive = new Date(endDate.getTime() + DAY_MS);
+  const bookings = await all(C.bookings, q => {
+    // Include stays that overlap the requested calendar window, including same-day stays.
+    let query = q.lt('startDate', endExclusive).ge('endDate', start).descending('startDate');
+    if (filters.status) query = query.eq('status', boundedText(filters.status, 'Status', 30));
+    return query;
+  });
+  return bookings.map(booking => {
+    const bookingView = { ...booking, guestIdentity: undefined };
+    delete bookingView.phone;
+    delete bookingView.patientId;
+    delete bookingView.customData;
+    return bookingView;
+  });
+});
+
+export const getBookingDetails = webMethod(Permissions.SiteMember, async bookingId => {
+  const user = await requireOperationalStaff();
+  const booking = await getBookingByReference(bookingId);
+  const [guests, payments] = await Promise.all([
+    all(C.guests, q => q.eq('bookingId', booking._id).ascending('_createdDate')),
+    all(C.payments, q => q.eq('bookingId', booking._id).ascending('receivedAt'))
+  ]);
+  await audit(user, 'BOOKING_GUEST_DETAILS_VIEWED', booking._id, { guestCount: guests.length });
+  const financeOnly = user.role === 'accountant';
+  const bookingView = { ...booking, guestIdentity: undefined };
+  if (financeOnly) {
+    bookingView.phone = undefined;
+    bookingView.patientId = undefined;
+  }
+  return {
+    booking: bookingView,
+    guests: guests.map(({ _id, name, address, customData }) => financeOnly ? ({ _id, name }) : ({ _id, name, address, customData })),
+    payments
+  };
+});
+
+async function confirmHoldAction(bookingId, requiredPayment, receivedAmount, method, note = '') {
+  const user = await requirePaymentStaff();
+  const booking = await getBooking(boundedText(bookingId, 'Booking', 100));
+  if (booking.status !== 'HOLD' || new Date(booking.holdExpiresAt).getTime() <= Date.now()) fail('This booking hold is no longer active.', 'EXPIRED');
+  const threshold = validAmount(requiredPayment, 'Confirmation payment', true);
+  const amount = validAmount(receivedAmount, 'Payment received', true);
+  if (amount < threshold) fail('Payment received must meet the required confirmation amount.');
+  if (amount === 0 && billTotal(booking) > 0) fail('Record a payment greater than zero to confirm a booking with a balance due.');
+  if (amount > billTotal(booking)) fail('Payment cannot exceed the current bill.');
+  if (amount > 0 && !['Cash', 'Bank transfer'].includes(method)) fail('Choose Cash or Bank transfer.');
+  const originalExpiry = booking.holdExpiresAt;
+  let payment, cashbookEntry;
+  try {
+    if (amount > 0) {
+      payment = await wixData.insert(C.payments, {
+        bookingId: booking._id, amount, method, receivedAt: new Date(), note: boundedText(note, 'Payment note', 200, false),
+        receiptCode: randomCode('RC'), recordedBy: user.id
+      }, WRITE);
+      cashbookEntry = await wixData.insert(C.cashbook, {
+        entryDate: new Date(), entryType: 'RECEIPT', category: 'Accommodation', description: `${booking.resourceNameSnapshot} · ${booking.bookingCode}`,
+        amount, method, bookingId: booking._id, paymentId: payment._id, recordedBy: user.id
+      }, WRITE);
+    }
+    await makeLocksPermanent(booking._id);
+    booking.requiredPayment = threshold;
+    booking.status = 'CONFIRMED';
+    booking.holdExpiresAt = null;
+    booking.confirmedAt = new Date();
+    booking.balanceDue = Math.max(0, billTotal(booking) - amount);
+    await wixData.update(C.bookings, booking, WRITE);
+  } catch (error) {
+    if (cashbookEntry?._id) await wixData.remove(C.cashbook, cashbookEntry._id, WRITE).catch(() => undefined);
+    if (payment?._id) await wixData.remove(C.payments, payment._id, WRITE).catch(() => undefined);
+    await setLockExpiry(booking._id, originalExpiry).catch(() => undefined);
+    throw error;
+  }
+  await audit(user, 'BOOKING_CONFIRMED', booking._id, { paymentId: payment?._id || '', amount, method: amount > 0 ? method : 'No charge' });
+  return { bookingCode: booking.bookingCode, status: booking.status, billTotal: billTotal(booking), paid: amount, balanceDue: Math.max(0, billTotal(booking) - amount), receiptCode: payment?.receiptCode || '' };
+}
+export const confirmHold = webMethod(Permissions.SiteMember, async (bookingId, requiredPayment, receivedAmount, method, note = '') =>
+  withBookingOperation(bookingId, () => confirmHoldAction(bookingId, requiredPayment, receivedAmount, method, note)));
+
+async function cancelHoldAction(bookingId) {
+
+  const user = await requireOperationalStaff();
+  const booking = await getBooking(boundedText(bookingId, 'Booking', 100));
+  const alreadyCancelled = booking.status === 'CANCELLED';
+  if (!alreadyCancelled && booking.status !== 'HOLD') fail('Only a pending unpaid hold can be cancelled.');
+  if (!alreadyCancelled) {
+    const payments = await all(C.payments, q => q.eq('bookingId', booking._id));
+    if (payments.length) fail('This booking has a payment record and cannot be cancelled as an unpaid hold.');
+    booking.status = 'CANCELLED';
+    booking.cancelledAt = new Date();
+    booking.cancelledBy = user.id;
+    await wixData.update(C.bookings, booking, WRITE);
+  }
+
+  // Retrying a cancelled hold safely removes any locks left by a partial cleanup.
+  const locks = await all(C.locks, q => q.eq('bookingId', booking._id));
+  await Promise.all(locks.map(lock => wixData.remove(C.locks, lock._id, WRITE)));
+  if (!alreadyCancelled) await audit(user, 'BOOKING_HOLD_CANCELLED', booking._id, { bookingCode: booking.bookingCode });
+  return { bookingCode: booking.bookingCode, status: 'CANCELLED', releasedSlots: locks.length };
+}
+
+export const cancelHold = webMethod(Permissions.SiteMember, async bookingId =>
+  withBookingOperation(bookingId, () => cancelHoldAction(bookingId)));
+
+export const createStaffBooking = webMethod(Permissions.SiteMember, async input => {
+  const user = await requireOperationalStaff();
+  await requireInventoryReady();
+  if (!input || typeof input !== 'object') fail('Booking details are required.');
+  const resourceId = boundedText(input.resourceId, 'Accommodation', 100);
+  const leadName = boundedText(input.leadName, 'Lead guest name', 120);
+  const phone = phoneText(input.phone);
+  const partySize = Number(input.partySize);
+  if (!Number.isInteger(partySize) || partySize < 1 || partySize > 20) fail('Guest count must be between 1 and 20.');
+  const start = parseDate(input.startDate, 'Check-in');
+  const end = parseDate(input.endDate, 'Checkout');
+  if (start < parseDate(todayKolkata(), 'Today')) fail('Check-in date cannot be in the past.');
+  const days = stayDays(start, end);
+  const resource = await wixData.get(C.resources, resourceId, READ);
+  if (!resource || !resource.active || resource.kind === 'facility') fail('That accommodation is not available.', 'NOT_FOUND');
+  if (resource.dailyRate === null || resource.dailyRate === undefined) fail('Set this accommodation rate before creating a booking.', 'RATE_REQUIRED');
+  if (resource.kind !== 'dorm' && partySize > Number(resource.capacity)) fail('Guest count exceeds this room capacity.');
+  const bedCount = resource.kind === 'dorm' ? Number(input.bedCount || partySize) : 0;
+  if (resource.kind === 'dorm' && (!Number.isInteger(bedCount) || bedCount < partySize || bedCount > Number(resource.capacity))) fail('Choose enough dormitory beds for the guest group.');
+  const settings = await getSetting('general', { checkIn: '14:00', checkOut: '12:00', timezone: 'Asia/Kolkata' });
+  const kitchen = await getSetting('commonKitchen', { rate: 100, eligibleResourceIds: [] });
+  const booking = await wixData.insert(C.bookings, {
+    bookingCode: randomCode('HV'), source: 'STAFF', status: 'ALLOCATING', resourceId,
+    resourceNameSnapshot: resource.name, resourceKind: resource.kind,
+    startDate: start, endDate: end, partySize, bedCount, leadName, phone,
+    roomRateSnapshot: Number(resource.dailyRate), kitchenRateSnapshot: Number(kitchen.rate || 0),
+    requiredPayment: 0, holdExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+    kitchenDays: [], facilityUses: [], customData: {}, createdAt: new Date(), createdBy: user.id,
+    checkInTimeSnapshot: settings.checkIn, checkOutTimeSnapshot: settings.checkOut
+  }, WRITE);
+  try {
+    const currentResource = await wixData.get(C.resources, resourceId, { ...READ, consistentRead: true });
+    if (!currentResource || !currentResource.active) fail('That accommodation is no longer available.', 'NOT_FOUND');
+    await claimSlots(booking, currentResource, days);
+    booking.status = 'HOLD';
+    await wixData.update(C.bookings, booking, WRITE);
+  } catch (error) {
+    await removeLocks(booking._id).catch(() => undefined);
+    await wixData.remove(C.bookings, booking._id, WRITE).catch(() => undefined);
+    throw error;
+  }
+  await audit(user, 'STAFF_HOLD_CREATED', booking._id, { bookingCode: booking.bookingCode, resourceId, startDate: dateKey(start), endDate: dateKey(end) });
+  return { bookingCode: booking.bookingCode, status: booking.status, expiresAt: booking.holdExpiresAt, estimatedRoomCharge: billTotal(booking) };
+});
+
+async function rescheduleBookingAction(bookingId, startValue, endValue) {
+  const user = await requireOperationalStaff();
+  await requireInventoryReady();
+  await expireHolds();
+  const booking = await getBooking(boundedText(bookingId, 'Booking', 100));
+  if (!['HOLD', 'CONFIRMED', 'CHECKED_IN'].includes(booking.status)) fail('Only active stays can be rescheduled.');
+  if (booking.status === 'HOLD' && new Date(booking.holdExpiresAt).getTime() <= Date.now()) fail('This booking hold has expired.', 'EXPIRED');
+
+  const start = parseDate(startValue, 'New check-in date');
+  const end = parseDate(endValue, 'New checkout date');
+  const startKey = dateKey(start);
+  const endKey = dateKey(end);
+  const todayKey = todayKolkata();
+  if (booking.status === 'CHECKED_IN' && startKey !== dateKey(new Date(booking.startDate))) {
+    fail('The check-in date cannot be changed after the guest has checked in.');
+  }
+  if (startKey < todayKey) fail('The new check-in date cannot be in the past.');
+  if (booking.status === 'CHECKED_IN' && endKey < todayKey) fail('The new checkout date cannot be in the past.');
+
+  const days = stayDays(start, end);
+  const resource = await wixData.get(C.resources, booking.resourceId, READ);
+  if (!resource || resource.kind === 'facility') fail('The accommodation assigned to this stay is no longer available.', 'NOT_FOUND');
+  if (resource.kind !== 'dorm' && Number(booking.partySize || 1) > Number(resource.capacity)) {
+    fail('The room capacity is now below this guest group size. Contact an administrator before changing these dates.');
+  }
+
+  const oldLocks = await all(C.locks, q => q.eq('bookingId', booking._id));
+  const oldBedNumbers = [...new Set(oldLocks.filter(lock => Number(lock.bedNumber) > 0).map(lock => Number(lock.bedNumber)))].sort((a, b) => a - b);
+  const otherLocks = (await activeLocks(days[0], new Date(days[days.length - 1].getTime() + DAY_MS)))
+    .filter(lock => lock.resourceId === resource._id && lock.bookingId !== booking._id);
+  let bedNumbers;
+  if (resource.kind === 'dorm') {
+    const free = [];
+    for (let bed = 1; bed <= Number(resource.capacity); bed++) {
+      if (days.every(day => !otherLocks.some(lock => dateKey(new Date(lock.stayDate)) === dateKey(day) && Number(lock.bedNumber) === bed))) free.push(bed);
+    }
+    const preferred = oldBedNumbers.filter(bed => free.includes(bed));
+    bedNumbers = [...preferred, ...free.filter(bed => !preferred.includes(bed))].slice(0, Number(booking.bedCount || 1));
+    if (bedNumbers.length < Number(booking.bedCount || 1)) fail('There are not enough dormitory beds for the new dates.', 'UNAVAILABLE');
+  } else {
+    if (days.some(day => otherLocks.some(lock => dateKey(new Date(lock.stayDate)) === dateKey(day) && Number(lock.bedNumber) === 0))) {
+      fail('That room is already reserved for one or more of the new dates.', 'UNAVAILABLE');
+    }
+    bedNumbers = [0];
+  }
+
+  const targetSlots = days.flatMap(day => bedNumbers.map(bedNumber => ({
+    slotKey: `${resource._id}|${dateKey(day)}|${bedNumber}`, resourceId: resource._id, bedNumber, stayDate: day
+  })));
+  const targetKeys = new Set(targetSlots.map(slot => slot.slotKey));
+  const existingKeys = new Set(oldLocks.map(lock => lock.slotKey));
+  const inserted = [];
+  try {
+    for (const slot of targetSlots) {
+      if (existingKeys.has(slot.slotKey)) continue;
+      const lock = await wixData.insert(C.locks, {
+        ...slot, bookingId: booking._id,
+        holdExpiresAt: booking.status === 'HOLD' ? booking.holdExpiresAt : null
+      }, WRITE);
+      inserted.push(lock._id);
+    }
+  } catch (_) {
+    await Promise.all(inserted.map(id => wixData.remove(C.locks, id, WRITE).catch(() => undefined)));
+    fail('Those dates were just reserved by someone else. Please choose new dates.', 'UNAVAILABLE');
+  }
+
+  const oldStartDate = dateKey(new Date(booking.startDate));
+  const oldEndDate = dateKey(new Date(booking.endDate));
+  const stayKeys = new Set(days.map(dateKey));
+  let total;
+  let paid;
+  try {
+    booking.startDate = start;
+    booking.endDate = end;
+    booking.kitchenDays = (booking.kitchenDays || []).filter(day => stayKeys.has(dateKey(parseDate(day, 'Kitchen-use date'))));
+    total = billTotal(booking);
+    paid = await paidTotal(booking._id);
+    if (total < paid) fail('The new bill would be lower than the amount already received. Adjust the stay or review its payments first.');
+    booking.balanceDue = Math.max(0, Math.round((total - paid) * 100) / 100);
+    booking.updatedAt = new Date();
+    booking.updatedBy = user.id;
+    await wixData.update(C.bookings, booking, WRITE);
+  } catch (error) {
+    await Promise.all(inserted.map(id => wixData.remove(C.locks, id, WRITE).catch(() => undefined)));
+    throw error;
+  }
+
+  const obsolete = oldLocks.filter(lock => Number(lock.bedNumber) >= 0 && !targetKeys.has(lock.slotKey));
+  let cleanupPending = false;
+  for (const lock of obsolete) {
+    try { await wixData.remove(C.locks, lock._id, WRITE); }
+    catch (_) { cleanupPending = true; }
+  }
+  await audit(user, 'BOOKING_DATES_CHANGED', booking._id, {
+    from: { startDate: oldStartDate, endDate: oldEndDate },
+    to: { startDate: startKey, endDate: endKey },
+    billTotal: total, cleanupPending
+  });
+  return { bookingId: booking._id, bookingCode: booking.bookingCode, startDate: startKey, endDate: endKey, billTotal: total, amountPaid: paid, balanceDue: booking.balanceDue, cleanupPending };
+}
+
+export const rescheduleBooking = webMethod(Permissions.SiteMember, async (bookingId, startDate, endDate) =>
+  withBookingOperation(bookingId, () => rescheduleBookingAction(bookingId, startDate, endDate)));
+
+export const getBillingDetails = webMethod(Permissions.SiteMember, async bookingId => {
+  await requirePaymentStaff();
+  const booking = await getBooking(boundedText(bookingId, 'Booking', 100));
+  const payments = await all(C.payments, q => q.eq('bookingId', booking._id).ascending('receivedAt'));
+  const total = billTotal(booking);
+  const paid = payments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+  return {
+    bookingCode: booking.bookingCode, guestName: booking.leadName, resourceName: booking.resourceNameSnapshot,
+    startDate: dateKey(new Date(booking.startDate)), endDate: dateKey(new Date(booking.endDate)),
+    checkInTime: booking.checkInTimeSnapshot, checkOutTime: booking.checkOutTimeSnapshot,
+    lines: billLines(booking), billTotal: total, payments, amountPaid: Math.round(paid * 100) / 100,
+    balanceDue: Math.max(0, Math.round((total - paid) * 100) / 100)
+  };
+});
+
+export const getReceipt = webMethod(Permissions.SiteMember, async receiptCode => {
+  await requirePaymentStaff();
+  const code = boundedText(receiptCode, 'Receipt number', 100);
+  const result = await wixData.query(C.payments).eq('receiptCode', code).limit(1).find(READ);
+  const payment = result.items[0];
+  if (!payment) fail('Receipt was not found.', 'NOT_FOUND');
+  const booking = await getBooking(payment.bookingId);
+  return { receiptCode: payment.receiptCode, amount: payment.amount, method: payment.method, receivedAt: payment.receivedAt, note: payment.note || '', bookingCode: booking.bookingCode, guestName: booking.leadName, facilityName: (await getSetting('general', {})).facilityName || 'Church Accommodation Facility' };
+});
+
+async function checkOutAction(bookingId) {
+
+  const user = await requireOperationalStaff();
+  const booking = await getBooking(boundedText(bookingId, 'Booking', 100));
+  if (!['CONFIRMED', 'CHECKED_IN', 'CHECKED_OUT'].includes(booking.status)) fail('Only confirmed or checked-in stays can be checked out.');
+
+  const alreadyCheckedOut = booking.status === 'CHECKED_OUT';
+  const today = parseDate(todayKolkata(), 'Today');
+  if (!alreadyCheckedOut && today < new Date(booking.startDate)) fail('A future booking cannot be checked out before its check-in date.');
+  let releasedFutureSlots = 0;
+  if (!alreadyCheckedOut) {
+    booking.status = 'CHECKED_OUT';
+    booking.checkedOutAt = new Date();
+    booking.housekeepingStatus = 'NEEDS_CLEANING';
+    booking.housekeepingUpdatedAt = new Date();
+    booking.housekeepingUpdatedBy = user.id;
+    booking.balanceDue = Math.max(0, billTotal(booking) - await paidTotal(booking._id));
+    await wixData.update(C.bookings, booking, WRITE);
+  }
+
+  // Keep today's slot protected for safe turnover; release only unused future dates.
+  const tomorrow = new Date(today.getTime() + DAY_MS);
+  const futureLocks = await all(C.locks, q => q.eq('bookingId', booking._id).ge('stayDate', tomorrow));
+  releasedFutureSlots = futureLocks.length;
+  await Promise.all(futureLocks.map(lock => wixData.remove(C.locks, lock._id, WRITE)));
+  if (releasedFutureSlots) {
+    await audit(user, 'FUTURE_STAY_SLOTS_RELEASED', booking._id, { count: releasedFutureSlots });
+  }
+  if (!alreadyCheckedOut) {
+    await audit(user, 'GUEST_CHECKED_OUT', booking._id, { balanceDue: booking.balanceDue, releasedFutureSlots });
+  }
+  return { bookingCode: booking.bookingCode, status: booking.status, billTotal: billTotal(booking), balanceDue: booking.balanceDue, releasedFutureSlots };
+}
+
+export const checkOut = webMethod(Permissions.SiteMember, async bookingId =>
+  withBookingOperation(bookingId, () => checkOutAction(bookingId)));
+
+export const getHousekeepingTasks = webMethod(Permissions.SiteMember, async () => {
+  await requireHousekeepingStaff();
+  const bookings = await all(C.bookings, q => q.eq('status', 'CHECKED_OUT').descending('checkedOutAt'));
+  return bookings
+    .filter(booking => (booking.housekeepingStatus || 'NEEDS_CLEANING') !== 'READY')
+    .map(booking => ({
+      bookingId: booking._id,
+      resourceName: booking.resourceNameSnapshot,
+      checkedOutAt: booking.checkedOutAt,
+      status: booking.housekeepingStatus || 'NEEDS_CLEANING'
+    }));
+});
+
+async function setHousekeepingStatusAction(bookingId, status) {
+
+  const user = await requireHousekeepingStaff();
+  const nextStatus = boundedText(status, 'Cleaning status', 30);
+  if (!['NEEDS_CLEANING', 'IN_PROGRESS', 'READY'].includes(nextStatus)) fail('Choose a supported cleaning status.');
+  const booking = await getBooking(boundedText(bookingId, 'Booking', 100));
+  if (booking.status !== 'CHECKED_OUT') fail('Cleaning can be updated after a stay has checked out.');
+  booking.housekeepingStatus = nextStatus;
+  booking.housekeepingUpdatedAt = new Date();
+  booking.housekeepingUpdatedBy = user.id;
+  await wixData.update(C.bookings, booking, WRITE);
+  await audit(user, 'HOUSEKEEPING_STATUS_UPDATED', booking._id, { status: nextStatus });
+  return { bookingId: booking._id, status: nextStatus };
+}
+
+export const setHousekeepingStatus = webMethod(Permissions.SiteMember, async (bookingId, status) =>
+  withBookingOperation(bookingId, () => setHousekeepingStatusAction(bookingId, status)));
+
+async function persistBookingGuests(bookingId, guests) {
+  const existing = await all(C.guests, q => q.eq('bookingId', bookingId).ascending('_createdDate'));
+  for (let index = 0; index < guests.length; index += 1) {
+    if (existing[index]) await wixData.update(C.guests, { ...guests[index], _id: existing[index]._id }, WRITE);
+    else await wixData.insert(C.guests, guests[index], WRITE);
+  }
+  await Promise.all(existing.slice(guests.length).map(item => wixData.remove(C.guests, item._id, WRITE)));
+}
+
+async function saveCheckInAction(bookingId, payload) {
+
+  const user = await requireCheckInStaff();
+  const booking = await getBooking(boundedText(bookingId, 'Booking', 100));
+  const originalStatus = booking.status;
+  if (!['CONFIRMED', 'CHECKED_IN', 'CHECKED_OUT'].includes(booking.status)) fail('Only confirmed stays can have guest details edited.');
+  if (booking.status === 'CONFIRMED') {
+    const today = todayKolkata();
+    const startDate = dateKey(new Date(booking.startDate));
+    const endDate = dateKey(new Date(booking.endDate));
+    if (today < startDate) fail('A future booking cannot be checked in before its check-in date.');
+    if (startDate === endDate ? today !== startDate : today >= endDate) fail('The booked stay date range has ended; adjust the booking before checking in.');
+  }
+  if (!payload || !Array.isArray(payload.guests) || payload.guests.length !== Number(booking.partySize)) fail('Guest list must match the booking party size.');
+  const guestFieldSettings = await getSetting('guestFields', { fields: [] });
+  const configuredFields = (guestFieldSettings.fields || []).filter(field => field.active !== false);
+  if (configuredFields.some(field => /aadhaar|identity/i.test(`${field.id} ${field.label}`))) fail('Aadhaar details must be stored in the restricted identity record, not a general guest field.');
+  const guests = payload.guests.map((guest, index) => {
+    const values = guest.customData && typeof guest.customData === 'object' && !Array.isArray(guest.customData) ? guest.customData : {};
+    const customData = {};
+    for (const field of configuredFields) {
+      const value = values[field.id];
+      if (field.required && (value === undefined || value === null || value === '')) fail(`${field.label} is required for Guest ${index + 1}.`);
+      if (value === undefined || value === null || value === '') continue;
+      if (field.type === 'number') {
+        const number = Number(value);
+        if (!Number.isFinite(number)) fail(`${field.label} must be a number.`);
+        customData[field.id] = number;
+      } else if (field.type === 'boolean') {
+        if (typeof value !== 'boolean') fail(`${field.label} must be yes or no.`);
+        customData[field.id] = value;
+      } else {
+        const text = boundedText(value, field.label, 500);
+        if (field.type === 'select' && !(field.options || []).includes(text)) fail(`Choose a listed option for ${field.label}.`);
+        if (field.type === 'date') parseDate(text, field.label);
+        customData[field.id] = text;
+      }
+    }
+    return {
+      bookingId: booking._id, name: boundedText(guest.name, `Guest ${index + 1}`, 120),
+      address: index === 0 ? boundedText(payload.address, 'Address', 500, false) : '', customData
+    };
+  });
+  booking.patientId = boundedText(payload.patientId, 'Patient ID', 100, false);
+  if (originalStatus === 'CHECKED_OUT') {
+    await persistBookingGuests(booking._id, guests);
+    await wixData.update(C.bookings, booking, WRITE);
+    await audit(user, 'GUEST_DETAILS_CORRECTED', booking._id, { guestCount: guests.length, billUnchanged: true });
+    return { bookingCode: booking.bookingCode, status: booking.status, billTotal: billTotal(booking), balanceDue: Number(booking.balanceDue || 0) };
+  }
+  const stayDateKeys = new Set(stayDays(new Date(booking.startDate), new Date(booking.endDate)).map(dateKey));
+  const kitchenDays = (payload.kitchenDays || []).map(day => dateKey(parseDate(day, 'Kitchen-use date')));
+  if (new Set(kitchenDays).size !== kitchenDays.length || kitchenDays.some(day => !stayDateKeys.has(day))) fail('Kitchen use can only be recorded once per day during the stay.');
+  const kitchenSettings = await getSetting('commonKitchen', { rate: 100, eligibleResourceIds: [] });
+  if (kitchenDays.length && !(kitchenSettings.eligibleResourceIds || []).includes(booking.resourceId)) fail('Common kitchen use is not available for this accommodation.');
+  booking.kitchenDays = kitchenDays;
+  // Keep the rate captured when the booking was made; later settings edits must not rewrite historic bills.
+  booking.kitchenRateSnapshot = booking.kitchenRateSnapshot ?? Number(kitchenSettings.rate || 0);
+  const facilitySettings = await getSetting('chargeableFacilities', { items: [] });
+  const facilityItems = (facilitySettings.items || []).filter(item => item.active !== false);
+  const requestedUses = Array.isArray(payload.facilityUses) ? payload.facilityUses : [];
+  if (new Set(requestedUses.map(item => item.facilityId)).size !== requestedUses.length) fail('Choose each additional facility once and set its quantity.');
+  booking.facilityUses = requestedUses.map(use => {
+    const facility = facilityItems.find(item => item.id === use.facilityId);
+    if (!facility) fail('A selected additional facility is no longer available.');
+    const quantity = validAmount(use.quantity, 'Facility quantity');
+    if (facility.unit.includes('day') && (!Number.isInteger(quantity) || quantity > stayDateKeys.size)) fail('Per-day facility quantity must be whole days within the stay.');
+    return { facilityId: facility.id, name: facility.name, unit: facility.unit, rate: Number(facility.rate), quantity };
+  });
+  const revisedBill = billTotal(booking);
+  const paidSoFar = await paidTotal(booking._id);
+  if (paidSoFar > revisedBill) fail('These charge changes would make recorded payments exceed the revised bill. Review the charges before saving.');
+  await persistBookingGuests(booking._id, guests);
+  booking.customData = {};
+  booking.status = 'CHECKED_IN';
+  if (originalStatus === 'CONFIRMED') booking.checkedInAt = new Date();
+  booking.balanceDue = Math.max(0, billTotal(booking) - await paidTotal(booking._id));
+  await wixData.update(C.bookings, booking, WRITE);
+  await audit(user, originalStatus === 'CONFIRMED' ? 'GUEST_CHECKED_IN' : 'GUEST_DETAILS_UPDATED', booking._id, { guestCount: guests.length });
+  return { bookingCode: booking.bookingCode, status: booking.status, billTotal: billTotal(booking), balanceDue: booking.balanceDue };
+}
+
+export const saveCheckIn = webMethod(Permissions.SiteMember, async (bookingId, payload) =>
+  withBookingOperation(bookingId, () => saveCheckInAction(bookingId, payload)));
+
+async function paidTotal(bookingId) {
+  const payments = await all(C.payments, q => q.eq('bookingId', bookingId));
+  return payments.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+}
+
+async function recordPaymentAction(bookingId, amountValue, method, note = '') {
+
+  const user = await requirePaymentStaff();
+  const booking = await getBooking(boundedText(bookingId, 'Booking', 100));
+  if (!['CONFIRMED', 'CHECKED_IN', 'CHECKED_OUT'].includes(booking.status)) fail('Payments can only be recorded for confirmed stays.');
+  const amount = validAmount(amountValue, 'Payment received');
+  if (!['Cash', 'Bank transfer'].includes(method)) fail('Choose Cash or Bank transfer.');
+  const paid = await paidTotal(booking._id);
+  if (paid + amount > billTotal(booking)) fail('Payment exceeds the bill balance.');
+  const payment = await wixData.insert(C.payments, {
+    bookingId: booking._id, amount, method, receivedAt: new Date(), note: boundedText(note, 'Payment note', 200, false),
+    receiptCode: randomCode('RC'), recordedBy: user.id
+  }, WRITE);
+  let cashbookEntry;
+  try {
+    cashbookEntry = await wixData.insert(C.cashbook, {
+      entryDate: new Date(), entryType: 'RECEIPT', category: 'Accommodation', description: `${booking.resourceNameSnapshot} · ${booking.bookingCode}`,
+      amount, method, bookingId: booking._id, paymentId: payment._id, recordedBy: user.id
+    }, WRITE);
+    booking.balanceDue = Math.max(0, billTotal(booking) - paid - amount);
+    await wixData.update(C.bookings, booking, WRITE);
+  } catch (error) {
+    if (cashbookEntry?._id) await wixData.remove(C.cashbook, cashbookEntry._id, WRITE).catch(() => undefined);
+    await wixData.remove(C.payments, payment._id, WRITE).catch(() => undefined);
+    throw error;
+  }
+  await audit(user, 'PAYMENT_RECORDED', booking._id, { paymentId: payment._id, amount, method });
+  return { receiptCode: payment.receiptCode, amount, balanceDue: booking.balanceDue };
+}
+
+export const recordPayment = webMethod(Permissions.SiteMember, async (bookingId, amountValue, method, note = '') =>
+  withBookingOperation(bookingId, () => recordPaymentAction(bookingId, amountValue, method, note)));
+
+export const addCashbookEntry = webMethod(Permissions.SiteMember, async entry => {
+  const user = await requireFinanceStaff();
+  if (!entry || !['RECEIPT', 'PAYMENT'].includes(entry.entryType)) fail('Choose receipt or payment.');
+  if (!['Cash', 'Bank transfer'].includes(entry.method)) fail('Choose Cash or Bank transfer.');
+  const item = await wixData.insert(C.cashbook, {
+    entryDate: parseDate(entry.entryDate, 'Entry date'), entryType: entry.entryType,
+    category: boundedText(entry.category, 'Category', 80), description: boundedText(entry.description, 'Description', 250),
+    amount: validAmount(entry.amount, 'Amount'), method: entry.method, recordedBy: user.id
+  }, WRITE);
+  await audit(user, 'CASHBOOK_ENTRY_ADDED', item._id, { entryType: item.entryType, amount: item.amount });
+  return item;
+});
+
+export const getFinancialReport = webMethod(Permissions.SiteMember, async (startDate, endDate) => {
+  await requireFinanceStaff();
+  const startKey = dateKey(parseDate(startDate, 'Report start date'));
+  const endKey = dateKey(parseDate(endDate, 'Report end date'));
+  if (endKey < startKey) fail('Report end date cannot be before its start date.');
+  const start = kolkataDayStart(startKey, 'Report start date');
+  const endExclusive = new Date(kolkataDayStart(endKey, 'Report end date').getTime() + DAY_MS);
+  const budgetStart = parseDate(startKey, 'Report start date');
+  const budgetEnd = parseDate(endKey, 'Report end date');
+  const [entries, budgets] = await Promise.all([
+    all(C.cashbook, q => q.ge('entryDate', start).lt('entryDate', endExclusive).ascending('entryDate')),
+    all(C.budgets, q => q.le('periodStart', budgetEnd).ge('periodEnd', budgetStart).ascending('periodStart'))
+  ]);
+  const receipts = entries.filter(item => item.entryType === 'RECEIPT');
+  const payments = entries.filter(item => item.entryType === 'PAYMENT');
+  const sum = rows => Math.round(rows.reduce((total, row) => total + Number(row.amount || 0), 0) * 100) / 100;
+  const categories = rows => Object.values(rows.reduce((result, row) => {
+    const category = row.category || 'Uncategorized';
+    result[category] ||= { category, amount: 0, count: 0 };
+    result[category].amount += Number(row.amount || 0);
+    result[category].count += 1;
+    return result;
+  }, {})).map(row => ({ ...row, amount: Math.round(row.amount * 100) / 100 }));
+  return {
+    period: { startDate: startKey, endDate: endKey },
+    receipts: { total: sum(receipts), count: receipts.length, byCategory: categories(receipts), entries: receipts },
+    payments: { total: sum(payments), count: payments.length, byCategory: categories(payments), entries: payments },
+    net: Math.round((sum(receipts) - sum(payments)) * 100) / 100,
+    budgets
+  };
+});
+
+export const listBudgets = webMethod(Permissions.SiteMember, async () => {
+  await requireFinanceStaff();
+  const budgets = await all(C.budgets, q => q.descending('periodStart'));
+  return budgets.map(item => ({
+    _id: item._id,
+    category: item.category || '',
+    amount: Number(item.amount || 0),
+    periodStart: dateKey(new Date(item.periodStart)),
+    periodEnd: dateKey(new Date(item.periodEnd)),
+    notes: item.notes || ''
+  }));
+});
+
+export const saveBudget = webMethod(Permissions.SiteMember, async budget => {
+  const user = await requireFinanceStaff();
+  if (!budget || typeof budget !== 'object') fail('Budget details are required.');
+  const start = parseDate(budget?.periodStart, 'Budget start date');
+  const end = parseDate(budget?.periodEnd, 'Budget end date');
+  if (end < start) fail('Budget end date cannot be before its start date.');
+  const item = {
+    category: boundedText(budget.category, 'Budget category', 80),
+    amount: validAmount(budget.amount, 'Budget amount'),
+    periodStart: start, periodEnd: end,
+    notes: boundedText(budget.notes, 'Budget notes', 300, false),
+    updatedAt: new Date(), updatedBy: user.id
+  };
+  let saved;
+  if (budget._id) {
+    const id = boundedText(budget._id, 'Budget ID', 100);
+    const existing = await wixData.get(C.budgets, id, READ);
+    if (!existing) fail('Budget entry was not found.', 'NOT_FOUND');
+    saved = await wixData.update(C.budgets, { ...existing, ...item, _id: id }, WRITE);
+  } else {
+    saved = await wixData.insert(C.budgets, { ...item, createdAt: new Date(), createdBy: user.id }, WRITE);
+  }
+  await audit(user, budget._id ? 'BUDGET_UPDATED' : 'BUDGET_ADDED', saved._id, { category: saved.category, amount: saved.amount });
+  return { id: saved._id, category: saved.category, amount: saved.amount, periodStart: dateKey(saved.periodStart), periodEnd: dateKey(saved.periodEnd) };
+});
+
+export const saveResource = webMethod(Permissions.SiteMember, async resourceInput => {
+  const user = await requireAdmin();
+  if (!resourceInput || typeof resourceInput !== 'object') fail('Resource details are required.');
+  const resource = {
+    name: boundedText(resourceInput.name, 'Resource name', 100),
+    kind: ['private', 'dorm'].includes(resourceInput.kind) ? resourceInput.kind : fail('Choose a private room or dormitory. Add chargeable items in Facility Settings.'),
+    active: resourceInput.active !== false,
+    capacity: Math.max(1, Math.min(100, Number(resourceInput.capacity || 1))),
+    dailyRate: resourceInput.dailyRate === '' || resourceInput.dailyRate == null ? null : validAmount(resourceInput.dailyRate, 'Daily rate', true),
+    bedsDescription: boundedText(resourceInput.bedsDescription, 'Bed description', 180, false),
+    bathroom: boundedText(resourceInput.bathroom, 'Bathroom details', 120, false),
+    kitchen: boundedText(resourceInput.kitchen, 'Kitchen details', 120, false),
+    amenities: Array.isArray(resourceInput.amenities) ? resourceInput.amenities.map(x => boundedText(x, 'Amenity', 80)).slice(0, 30) : [],
+    sortOrder: Number.isFinite(Number(resourceInput.sortOrder)) ? Number(resourceInput.sortOrder) : 100,
+    updatedAt: new Date(), updatedBy: user.id
+  };
+  if (!Number.isInteger(resource.capacity) || resource.capacity < 1) fail('Capacity must be a positive whole number.');
+  const resourceId = resourceInput._id ? boundedText(resourceInput._id, 'Resource ID', 100) : '';
+  let saved;
+  if (resourceId) {
+    const existing = await wixData.get(C.resources, resourceId, { ...READ, consistentRead: true });
+    if (!existing) fail('Resource was not found.', 'NOT_FOUND');
+    const bookings = await all(C.bookings, q => q.eq('resourceId', resourceId), { ...READ, consistentRead: true });
+    if (existing.kind !== resource.kind && bookings.length) {
+      fail('The resource type cannot change after bookings exist. Add a new resource and archive this one.');
+    }
+    if (resource.capacity < Number(existing.capacity || 1)) {
+      const now = Date.now();
+      const activeBookings = new Map(bookings.filter(booking =>
+        ['CONFIRMED', 'CHECKED_IN'].includes(booking.status)
+        || (booking.status === 'HOLD' && new Date(booking.holdExpiresAt).getTime() > now)
+      ).map(booking => [booking._id, booking]));
+      if (existing.kind !== 'dorm') {
+        const overCapacity = [...activeBookings.values()].some(booking => Number(booking.partySize || 1) > resource.capacity);
+        if (overCapacity) fail('Room capacity cannot be reduced below the guest count of an active booking.');
+      } else {
+        const locks = await all(C.locks, q => q.eq('resourceId', resourceId), { ...READ, consistentRead: true });
+        const overCapacity = locks.some(lock => activeBookings.has(lock.bookingId)
+          && Number(lock.bedNumber) > resource.capacity
+          && (!lock.holdExpiresAt || new Date(lock.holdExpiresAt).getTime() > now));
+        if (overCapacity) fail('Dormitory capacity cannot be reduced while higher-numbered beds are reserved.');
+      }
+    }
+    saved = await wixData.update(C.resources, { ...existing, ...resource, _id: resourceId }, WRITE);
+  } else {
+    saved = await wixData.insert(C.resources, { ...resource, createdAt: new Date(), createdBy: user.id }, WRITE);
+  }
+  await audit(user, resourceInput._id ? 'RESOURCE_UPDATED' : 'RESOURCE_ADDED', saved._id, { name: saved.name, active: saved.active });
+  return { id: saved._id, name: saved.name, active: saved.active };
+});
+
+
+export const deleteResource = webMethod(Permissions.SiteMember, async resourceId => {
+  const user = await requireAdmin();
+  const id = boundedText(resourceId, 'Resource ID', 100);
+  let resource = await wixData.get(C.resources, id, { ...READ, consistentRead: true });
+  if (!resource) fail('Resource was not found.', 'NOT_FOUND');
+
+  // Disable new requests before checking history. Booking creation rechecks the
+  // resource after inserting its temporary booking record to close this race.
+  if (resource.active !== false) {
+    resource = await wixData.update(C.resources, {
+      ...resource, active: false, updatedAt: new Date(), updatedBy: user.id
+    }, WRITE);
+  }
+
+  const [bookings, locks] = await Promise.all([
+    all(C.bookings, q => q.eq('resourceId', id), { ...READ, consistentRead: true }),
+    all(C.locks, q => q.eq('resourceId', id), { ...READ, consistentRead: true })
+  ]);
+  if (bookings.length || locks.length) {
+    await audit(user, 'RESOURCE_ARCHIVED', id, {
+      name: resource.name, bookingHistory: bookings.length > 0, inventoryLocks: locks.length
+    });
+    return { id, name: resource.name, archived: true };
+  }
+
+  const kitchenResult = await wixData.query(C.settings).eq('settingKey', 'commonKitchen').limit(1).find(READ);
+  const kitchenRecord = kitchenResult.items[0];
+  if (kitchenRecord && Array.isArray(kitchenRecord.value?.eligibleResourceIds)
+    && kitchenRecord.value.eligibleResourceIds.includes(id)) {
+    await wixData.update(C.settings, {
+      ...kitchenRecord,
+      value: {
+        ...kitchenRecord.value,
+        eligibleResourceIds: kitchenRecord.value.eligibleResourceIds.filter(resourceIdValue => resourceIdValue !== id)
+      }
+    }, WRITE);
+  }
+
+  await wixData.remove(C.resources, id, WRITE);
+  await audit(user, 'RESOURCE_DELETED', id, { name: resource.name });
+  return { id, name: resource.name, archived: false };
+});
+
+export const saveFacilitySettings = webMethod(Permissions.SiteMember, async settingsInput => {
+  const user = await requireAdmin();
+  const settingKey = boundedText(settingsInput?.settingKey, 'Settings section', 80);
+  if (!['general', 'commonKitchen', 'chargeableFacilities', 'guestFields'].includes(settingKey)) fail('Choose a supported settings section.');
+  let value = settingsInput?.value;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) fail('Settings must be an object.');
+  if (settingKey === 'general') {
+    value = { ...value, facilityName: boundedText(value.facilityName, 'Facility name', 120) };
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(value.checkIn || '') || !/^([01]\d|2[0-3]):[0-5]\d$/.test(value.checkOut || '')) fail('Check-in and check-out times must use HH:MM.');
+    value.timezone = 'Asia/Kolkata';
+  }
+  if (settingKey === 'commonKitchen') {
+    const eligibleResourceIds = Array.isArray(value.eligibleResourceIds) ? [...new Set(value.eligibleResourceIds.map(id => boundedText(id, 'Kitchen-eligible resource', 100)))] : [];
+    const resources = await Promise.all(eligibleResourceIds.map(id => wixData.get(C.resources, id, READ).catch(() => null)));
+    if (resources.some(resource => !resource || resource.kind === 'facility')) fail('Kitchen eligibility can only include accommodation resources.');
+    value = { rate: validAmount(value.rate ?? 100, 'Kitchen daily rate', true), eligibleResourceIds };
+  }
+  if (settingKey === 'chargeableFacilities') {
+    if (!Array.isArray(value.items)) fail('Chargeable facilities must be provided as an items list.');
+    const units = new Set(['per-day', 'per-person-day', 'per-stay', 'per-person-stay']);
+    const items = value.items.map((item, index) => {
+      const id = boundedText(item.id || `facility-${index + 1}`, 'Facility ID', 100);
+      const unit = boundedText(item.unit, 'Facility price unit', 40);
+      if (!units.has(unit)) fail('Choose a supported facility price unit.');
+      return { id, name: boundedText(item.name, 'Facility name', 100), active: item.active !== false, unit, rate: validAmount(item.rate, 'Facility rate', true) };
+    });
+    if (new Set(items.map(item => item.id)).size !== items.length) fail('Each chargeable facility must have a unique ID.');
+    value = { items };
+  }
+  if (settingKey === 'guestFields') {
+    if (!Array.isArray(value.fields)) fail('Guest fields must be provided as a fields list.');
+    const types = new Set(['text', 'number', 'date', 'select', 'boolean']);
+    const fields = value.fields.map((field, index) => {
+      const id = boundedText(field.id || `guest-field-${index + 1}`, 'Guest field ID', 80);
+      const type = boundedText(field.type || 'text', 'Guest field type', 20);
+      if (!types.has(type)) fail('Choose a supported guest field type.');
+      const options = Array.isArray(field.options) ? field.options.map(option => boundedText(option, 'Field option', 80)).slice(0, 50) : [];
+      if (type === 'select' && !options.length) fail('Select fields need at least one option.');
+      return { id, label: boundedText(field.label, 'Guest field label', 100), type, required: field.required === true, active: field.active !== false, options };
+    });
+    if (new Set(fields.map(field => field.id)).size !== fields.length) fail('Each guest field must have a unique ID.');
+    value = { fields };
+  }
+  const found = await wixData.query(C.settings).eq('settingKey', settingKey).limit(1).find(READ);
+  const saved = found.items[0]
+    ? await wixData.update(C.settings, { ...found.items[0], value, updatedAt: new Date(), updatedBy: user.id }, WRITE)
+    : await wixData.insert(C.settings, { settingKey, value, updatedAt: new Date(), updatedBy: user.id }, WRITE);
+  await audit(user, 'FACILITY_SETTINGS_UPDATED', saved._id, { settingKey });
+  return { settingKey, saved: true };
+});
+
+
+export const getAuditLog = webMethod(Permissions.SiteMember, async (startDate = '', endDate = '') => {
+  await requireAdmin();
+  const startKey = startDate ? dateKey(parseDate(startDate, 'Audit start date')) : '';
+  const endKey = endDate ? dateKey(parseDate(endDate, 'Audit end date')) : '';
+  if (startKey && endKey && endKey < startKey) fail('Audit end date cannot be before its start date.');
+  let query = wixData.query(C.audit);
+  if (startKey) query = query.ge('occurredAt', kolkataDayStart(startKey, 'Audit start date'));
+  if (endKey) query = query.lt('occurredAt', new Date(kolkataDayStart(endKey, 'Audit end date').getTime() + DAY_MS));
+  const result = await query.descending('occurredAt').limit(250).find(READ);
+  return result.items.map(item => ({
+    occurredAt: item.occurredAt,
+    actorId: item.actorId || '',
+    actorRole: item.actorRole || '',
+    action: item.action || '',
+    recordId: item.recordId || '',
+    details: item.details || {}
+  }));
+});
+
+export const getGuestIdentity = webMethod(Permissions.SiteMember, async guestId => {
+  const user = await requireAdmin();
+  const id = boundedText(guestId, 'Guest', 100);
+  const result = await wixData.query(C.identity).eq('guestId', id).limit(1).find(READ);
+  const record = result.items[0];
+  if (!record) fail('Identity record not found.', 'NOT_FOUND');
+  await audit(user, 'IDENTITY_RECORD_VIEWED', id, {});
+  const getDownloadUrl = auth.elevate(files.generateFileDownloadUrl);
+  const [front, back] = await Promise.all([
+    record.frontFileId ? getDownloadUrl(record.frontFileId, { expirationInMinutes: 5, contentDisposition: 'INLINE' }) : null,
+    record.backFileId ? getDownloadUrl(record.backFileId, { expirationInMinutes: 5, contentDisposition: 'INLINE' }) : null
+  ]);
+  return {
+    guestId: id, aadhaarNumber: record.aadhaarNumber || '',
+    frontFileId: record.frontFileId || '', backFileId: record.backFileId || '',
+    frontUrl: front?.downloadUrls?.[0]?.url || '', backUrl: back?.downloadUrls?.[0]?.url || ''
+  };
+});
+
+export const generateGuestDocumentUploadUrl = webMethod(Permissions.SiteMember, async (guestId, side, fileName, mimeType) => {
+  const user = await requireAdmin();
+  const id = boundedText(guestId, 'Guest', 100);
+  if (!['front', 'back'].includes(side)) fail('Choose the front or back of the Aadhaar card.');
+  const guest = await wixData.get(C.guests, id, READ);
+  if (!guest) fail('Guest record was not found.', 'NOT_FOUND');
+  if (!['image/jpeg', 'image/png'].includes(mimeType)) fail('Upload a JPG or PNG image.');
+  const safeName = boundedText(fileName, 'File name', 160).replace(/[^a-zA-Z0-9._-]/g, '-');
+  const upload = auth.elevate(files.generateFileUploadUrl);
+  const result = await upload(mimeType, {
+    fileName: `aadhaar-${id}-${side}-${Date.now()}-${safeName}`,
+    private: true,
+    labels: ['accommodation-aadhaar', `guest-${id}`, side]
+  });
+  await audit(user, 'IDENTITY_UPLOAD_URL_CREATED', id, { side });
+  return { uploadUrl: result.uploadUrl };
+});
+
+export const getGuestDocumentUploadStatus = webMethod(Permissions.SiteMember, async (fileId) => {
+  await requireAdmin();
+  const id = boundedText(fileId, 'Uploaded image', 1000);
+  const getDescriptors = auth.elevate(files.getFileDescriptors);
+  const result = await getDescriptors([id]);
+  const file = (result.files || []).find(item => item._id === id);
+  if (!file) return { status: 'PROCESSING', private: false };
+  if (file.private !== true) fail('Wix did not confirm that the uploaded image is private.', 'PRIVATE_FILE_REQUIRED');
+  if (file.mediaType !== 'IMAGE') fail('Aadhaar photos must be image files.', 'INVALID_FILE');
+  if (Number(file.sizeInBytes || 0) > 10 * 1024 * 1024) fail('Aadhaar photos must be 10 MB or smaller.', 'FILE_TOO_LARGE');
+  if (file.operationStatus === 'FAILED') fail('Wix could not process this image. Please upload it again.', 'UPLOAD_FAILED');
+  return { status: file.operationStatus || 'PROCESSING', private: true };
+});
+
+async function deleteStoredIdentityFiles(fileIds) {
+  const ids = [...new Set((fileIds || []).filter(Boolean))];
+  if (!ids.length) return;
+  const getDescriptors = auth.elevate(files.getFileDescriptors);
+  const result = await getDescriptors(ids);
+  const existingIds = new Set((result.files || []).map(file => file._id));
+  const remainingIds = ids.filter(fileId => existingIds.has(fileId));
+  if (remainingIds.length) {
+    const deleteFiles = auth.elevate(files.bulkDeleteFiles);
+    await deleteFiles(remainingIds, { permanent: true });
+  }
+}
+
+export const saveGuestIdentity = webMethod(Permissions.SiteMember, async (guestId, data) => {
+  const user = await requireAdmin();
+  const id = boundedText(guestId, 'Guest', 100);
+  const aadhaarNumber = boundedText(data?.aadhaarNumber, 'Aadhaar number', 12, false);
+  if (aadhaarNumber && !/^\d{12}$/.test(aadhaarNumber)) fail('Aadhaar number must contain 12 digits.');
+  const frontFileId = boundedText(data?.frontFileId, 'Front image', 1000, false);
+  const backFileId = boundedText(data?.backFileId, 'Back image', 1000, false);
+  const fileIds = [...new Set([frontFileId, backFileId].filter(Boolean))];
+  if (fileIds.length) {
+    const getDescriptors = auth.elevate(files.getFileDescriptors);
+    const descriptors = await getDescriptors(fileIds);
+    const byId = new Map((descriptors.files || []).map(file => [file._id, file]));
+    for (const fileId of fileIds) {
+      const file = byId.get(fileId);
+      if (!file || file.private !== true || file.mediaType !== 'IMAGE') fail('Aadhaar photos must be private image files uploaded through this form.');
+      if (Number(file.sizeInBytes || 0) > 10 * 1024 * 1024) fail('Aadhaar photos must be 10 MB or smaller.');
+    }
+  }
+  const found = await wixData.query(C.identity).eq('guestId', id).limit(1).find(READ);
+  const record = found.items[0] || { guestId: id };
+  record.bookingId = boundedText(data.bookingId, 'Booking', 100);
+  const guest = await wixData.get(C.guests, id, READ);
+  if (!guest || guest.bookingId !== record.bookingId) fail('Guest and booking do not match.', 'NOT_FOUND');
+  record.aadhaarNumber = aadhaarNumber;
+  record.frontFileId = frontFileId;
+  record.backFileId = backFileId;
+  record.updatedAt = new Date(); record.updatedBy = user.id;
+  const previousFileIds = found.items[0] ? [...new Set([found.items[0].frontFileId, found.items[0].backFileId].filter(Boolean))] : [];
+  const saved = found.items[0] ? await wixData.update(C.identity, record, WRITE) : await wixData.insert(C.identity, record, WRITE);
+  const replacedFileIds = previousFileIds.filter(fileId => !fileIds.includes(fileId));
+  if (replacedFileIds.length) await deleteStoredIdentityFiles(replacedFileIds);
+  await audit(user, 'IDENTITY_RECORD_UPDATED', id, { frontPhotoPresent: !!record.frontFileId, backPhotoPresent: !!record.backFileId, aadhaarPresent: !!aadhaarNumber });
+  return { guestId: id, saved: !!saved._id };
+});
+
+export const deleteGuestIdentity = webMethod(Permissions.SiteMember, async guestId => {
+  const user = await requireAdmin();
+  const id = boundedText(guestId, 'Guest', 100);
+  const found = await wixData.query(C.identity).eq('guestId', id).limit(1).find(READ);
+  if (found.items[0]) {
+    const fileIds = [...new Set([found.items[0].frontFileId, found.items[0].backFileId].filter(Boolean))];
+    await deleteStoredIdentityFiles(fileIds);
+    await wixData.remove(C.identity, found.items[0]._id, WRITE);
+  }
+  await audit(user, 'IDENTITY_RECORD_DELETED', id, {});
+  return { deleted: true };
+});
+
